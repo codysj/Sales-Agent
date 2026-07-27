@@ -1,0 +1,49 @@
+[project]
+name = "matrix-power-sales-agent"
+version = "0.1.0"
+description = "Matrix Power Always-On AI Sales Agent — application-owned sales workflow backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.14",
+    "fastapi>=0.115",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0",
+    "structlog>=24.4",
+    "uvicorn[standard]>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.9.1",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+# Not a distributable package: the API and worker run from this directory.
+# Avoids a build backend we would never publish through.
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+strict = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error"]

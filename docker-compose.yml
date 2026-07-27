@@ -1,0 +1,31 @@
+# Local development only. Never used for staging or production — deployment topology is
+# undecided pending Q-018 (hosting environment and maintenance owner), spec §18.3.
+#
+# The values below are throwaway local defaults, not secrets: the container binds to
+# localhost and holds only synthetic fixture data (AGENTS.md rules 1 and 3). Override them
+# in a git-ignored .env if you prefer; see .env.example.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-matrix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      POSTGRES_DB: ${POSTGRES_DB:-matrix_sales}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-matrix} -d ${POSTGRES_DB:-matrix_sales}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  pgdata:
