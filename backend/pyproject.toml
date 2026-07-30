@@ -35,6 +35,16 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
+[tool.ruff.lint.isort]
+# The local `alembic/` migrations directory otherwise makes ruff classify the installed
+# `alembic` package as first-party, producing import order it then rejects.
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+# Generated migrations carry `op` and `sa` from the template whether or not a given revision
+# uses them. Import order is the template's too — not worth rewriting each generated file.
+"alembic/versions/*" = ["F401", "I001", "E501"]
+
 [tool.mypy]
 python_version = "3.12"
 files = ["app"]

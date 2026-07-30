@@ -72,7 +72,7 @@ FORBIDDEN: dict[str, tuple[frozenset[str], str]] = {
 }
 
 #: Nothing may import the application factory; it wires everything else together.
-FORBIDDEN_FOR_ALL = frozenset({"main"})
+FORBIDDEN_FOR_ALL = frozenset({"main", "worker"})
 
 
 def _iter_source_files() -> list[Path]:

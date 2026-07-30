@@ -51,7 +51,10 @@ class Settings(BaseSettings):
     )
 
     app_env: AppEnv = AppEnv.LOCAL
-    database_url: str = "postgresql+psycopg://matrix:localdev@localhost:5432/matrix_sales"
+    # Host port 55432, matching docker-compose.yml: a native PostgreSQL on the developer's
+    # machine commonly owns 5432, and connections would silently reach it instead of the
+    # container. See docs/development.md.
+    database_url: str = "postgresql+psycopg://matrix:localdev@localhost:55432/matrix_sales"
 
     # --- Fail-closed safety switches -------------------------------------------------
     # shadow_mode: when true, external-effect adapters refuse to act at all (enforced at
@@ -59,6 +62,11 @@ class Settings(BaseSettings):
     shadow_mode: bool = True
     outbound_email_enabled: bool = False
     model_provider: ModelProvider = ModelProvider.FAKE
+
+    # Blank by default, and blank means *reject every webhook*, not "skip the check" (§19.4).
+    # No provider secret is committed anywhere: `Q-004` has chosen no provider, and the tests
+    # generate their own secret per run.
+    webhook_signing_secret: str = ""
 
 
 @lru_cache

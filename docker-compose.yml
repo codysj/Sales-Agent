@@ -13,7 +13,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
       POSTGRES_DB: ${POSTGRES_DB:-matrix_sales}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Host port 55432, not 5432. A native PostgreSQL service is commonly already listening on
+      # 5432 (it was on the first machine this ran on), and because both bind 0.0.0.0 the host
+      # silently reaches the *native* server instead of this container — the container looks
+      # healthy while every connection fails to authenticate. See docs/development.md.
+      - "${POSTGRES_PORT:-55432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

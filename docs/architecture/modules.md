@@ -11,7 +11,7 @@ There are no microservices here, and none are planned (ADR-002, §18.6).
 
 | Layer | Packages | Role |
 |---|---|---|
-| Foundation | `core`, `db` | Configuration, logging, middleware, engine. No domain knowledge. |
+| Foundation | `core`, `db` | Configuration, logging, middleware, engine, and the five lifecycle enums (`core/lifecycles.py`). Imports no domain module. |
 | Platform | `audit_and_operations` | Audit trail, operational flags, version records. Every module may depend on it, because every consequential action needs an audit event (§3.5). |
 | Mechanism | `jobs_and_outbox`, `model_gateway`, `messaging` | Generic machinery: leasing and delivery semantics, typed model tasks, channel transport. Deliberately ignorant of the domain. |
 | Entities | `identity`, `products_and_claims`, `campaigns`, `prospects` | The nouns: who is acting, what may be claimed, which campaign, which prospect. |
@@ -29,6 +29,12 @@ is an invented layering scheme.
 **`core` and `db` import no domain module.** Foundation that knows about campaigns stops being
 foundation, and the resulting cycle is discovered much later, at much greater cost.
 
+> The five lifecycle enums in `core/lifecycles.py` are domain *vocabulary*, not domain *logic*:
+> pure values and pure functions with no imports, so the dependency direction is unaffected.
+> They sit together deliberately — ADR-015 requires the five lifecycles to stay independent, and
+> that is easiest to audit when all five transition tables are visible on one screen. Each
+> lifecycle's states are otherwise consumed only by the module that owns its entity.
+
 **`model_gateway` imports no domain module.** §5.1: the LLM adapter must not own deterministic
 eligibility, approval, suppression, or execution. Enforcing this as an import rule makes it
 structural — the gateway *cannot* reach the rules it is forbidden to decide, so no future edit can
@@ -40,7 +46,10 @@ quietly hand it that authority.
 > interpretation, not a divergence; see `docs/reconciliation.md`.
 
 **`jobs_and_outbox` imports no domain module.** It moves work and guarantees effectively-once
-delivery; it does not know what a candidate is. Domain modules register handlers and perform their
+delivery; it does not know what a candidate is. This holds for *schema* edges too, not only Python
+imports: `outbox_event` carries no foreign key to `send_command`, because that table belongs to
+`outreach_and_replies`. The shared `idempotency_key` — unique in both tables — is the join instead,
+which costs nothing since §17.3 requires that key anyway (T-034). Domain modules register handlers and perform their
 own §11.4 rechecks inside the dispatch transaction. Keeping the queue generic is what lets the
 dispatch-time recheck live next to the rules it rechecks.
 
@@ -53,7 +62,9 @@ map a channel identity onto an existing application user (§15.2). If it could i
 internal model runs, evidence, approvals, or job state. It needs accounts and contacts to satisfy
 the §13.5 contract; it needs nothing else.
 
-**Nothing imports `main`.** The application factory wires everything together and must stay a leaf.
+**Nothing imports `main` or `worker`.** The two process entry points wire everything else together
+and must stay leaves. A module that imports one of them would drag a whole process's startup —
+logging configuration, signal handlers, an engine — into a unit test.
 
 **No cycles between packages.** Checked separately, because a set of individually legal edges can
 still close a loop.
@@ -71,7 +82,7 @@ db -/-> audit_and_operations, campaigns, crm, drafts_and_approvals, identity, jo
 jobs_and_outbox -/-> campaigns, crm, drafts_and_approvals, identity, messaging, model_gateway, outreach_and_replies, products_and_claims, prospects, qualification, research_and_evidence
 messaging -/-> campaigns, crm, drafts_and_approvals, jobs_and_outbox, model_gateway, outreach_and_replies, products_and_claims, prospects, qualification, research_and_evidence
 model_gateway -/-> campaigns, crm, drafts_and_approvals, identity, jobs_and_outbox, messaging, outreach_and_replies, products_and_claims, prospects, qualification, research_and_evidence
-* -/-> main
+* -/-> main, worker
 ```
 <!-- END ENFORCED RULES -->
 
