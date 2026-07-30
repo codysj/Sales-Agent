@@ -156,23 +156,26 @@ header's `IN_PROGRESS` row to its ID. Exactly one task may hold this status.
 - If checkpoint commits are later authorized: one narrowly scoped local commit per completed task, message
   prefixed with the task ID (e.g. `T-014: approved claim store with fail-closed validity`), no `--no-verify`,
   no force push, and never on a branch the user is using for something else.
-- Working on `main` is the current default because the repository has a single commit. If the user
-  authorizes commits, branch first.
+- Working on `main` is the current default. If the user authorizes commits, branch first.
 
 ## 10. Required final report
 
-Every run ends with exactly this structure:
+**The invoking prompt owns the report format.** The `/loop` prompt in use specifies these fields, and
+per §1 an explicit user instruction outranks this file — follow the prompt, not a format remembered
+from here:
 
 ```text
-Result:              COMPLETED | PARTIAL | BLOCKED | IDLE | FAILED
-Task:                T-### — <objective in one line>
-Material changes:    <files and what changed; "none" if none>
-Verification:        <commands run and their actual results>
-tasks.md change:     <status transitions, new task IDs, gate changes, progress-log row>
-Remaining blocker:   <exact blocker and Q-### reference, or "none">
-Next recommended:    T-### — <one line>
-External actions:    none
+LOOP_RESULT:      COMPLETED | PARTIAL | BLOCKED | IDLE | FAILED
+TASK:             T-### — <objective in one line>
+CHANGES:          <files and what changed; "none" if none>
+VERIFICATION:     <commands run and their actual observed results>
+LEDGER:           <status transitions, new task IDs, gate changes>
+NEXT:             <next recommended READY task, or the exact unblock condition>
+EXTERNAL_ACTIONS: none
 ```
 
-`External actions:` must read `none` unless the user explicitly authorized an external write in this
-session, in which case list each one performed.
+Whatever the field names, two rules hold regardless of format:
+
+- `VERIFICATION` carries **observed** output. Never describe a result you did not see.
+- `EXTERNAL_ACTIONS` reads `none` unless the user explicitly authorized an external write in this
+  session, in which case list each one performed.
