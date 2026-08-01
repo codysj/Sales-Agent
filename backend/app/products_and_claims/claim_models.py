@@ -85,8 +85,12 @@ class ApprovedClaim(Base, TimestampMixin):
     )
     source_date: Mapped[date | None] = mapped_column(Date)
 
-    #: Identity string until T-012's user table exists; T-136 converts it to a foreign key.
-    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: A foreign key to `app_user.email` with `RESTRICT` (`T-136b`, ADR-024).
+    approved_by: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("app_user.email", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    )
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -168,7 +172,12 @@ class ApprovedClaimSet(Base, TimestampMixin):
     )
     version: Mapped[int] = mapped_column(nullable=False)
 
-    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: A foreign key to `app_user.email` with `RESTRICT` (`T-136b`, ADR-024).
+    approved_by: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("app_user.email", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    )
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

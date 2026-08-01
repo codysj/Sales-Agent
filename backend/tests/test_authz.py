@@ -11,8 +11,13 @@ A matrix tested at two points is a matrix with holes in the middle, and the hole
 the one where a role nobody thought about turns out to grant an approval.
 """
 
-import pytest
+from typing import Annotated
 
+import pytest
+from fastapi import Depends, FastAPI
+from fastapi.routing import APIRoute
+
+from app.identity.dependencies import enforced_permission, requires, requires_mutation
 from app.identity.models import HUMAN_ONLY_ROLES, RoleKey
 from app.identity.rbac import (
     APPROVAL_PERMISSIONS,
@@ -272,3 +277,195 @@ def test_the_declared_routes_are_all_routes_the_app_serves() -> None:
 
     stale = sorted(key for key in ROUTE_PERMISSIONS if key not in served)
     assert stale == [], f"declarations for routes that no longer exist: {stale}"
+
+
+# --- T-162: what a route declares is what it enforces ---------------------------------------------
+#
+# `ROUTE_PERMISSIONS` is the table a reviewer reads to answer "who may do this", and until now it
+# was only *a* statement about the route rather than *the* one the code runs on. A negative
+# control on `T-069a` proved it: changing the table to `VIEW_STATUS` — the permission every role
+# holds — left every role still refused, because the handler names its own permission in its
+# signature. Two independent statements, and nothing compared them.
+#
+# The checker below is a pure function over `(routes, declared)` so the tests can feed it a
+# synthetic application whose two answers differ. A detector only ever run against code that
+# already agrees is a detector nobody has seen work.
+
+
+def route_objects() -> list[APIRoute]:
+    """Every `APIRoute` the real application serves, wrappers unwrapped.
+
+    Same recursion as `application_routes`, which learned the hard way that an included router
+    arrives as a wrapper whose real routes hang off it — a flat walk finds two health probes and
+    reports everything else as compliant.
+    """
+    found: list[APIRoute] = []
+
+    def walk(routes: object) -> None:
+        for route in routes or ():  # type: ignore[union-attr]
+            nested = getattr(route, "routes", None) or getattr(
+                getattr(route, "original_router", None), "routes", None
+            )
+            if nested:
+                walk(nested)
+                continue
+            if isinstance(route, APIRoute):
+                found.append(route)
+
+    walk(create_app(configure_logs=False).routes)
+    return found
+
+
+def enforced_permissions(route: APIRoute) -> set[Permission]:
+    """Every permission this route's dependency tree actually authorizes against.
+
+    The whole tree, not the handler's own parameters: a permission check added through a router
+    or an `APIRouter(dependencies=...)` is as real as one in the signature, and a walk that read
+    only the top level would report it as enforcing nothing.
+    """
+    found: set[Permission] = set()
+
+    def visit(dependant: object) -> None:
+        permission = enforced_permission(getattr(dependant, "call", None))
+        if permission is not None:
+            found.add(permission)
+        for sub in getattr(dependant, "dependencies", ()):
+            visit(sub)
+
+    visit(route.dependant)
+    return found
+
+
+def declaration_mismatches(
+    routes: list[APIRoute], declared: dict[tuple[str, str], object]
+) -> list[str]:
+    """Routes whose declared permission is not the one they enforce.
+
+    Fails closed in both directions. A route declaring a permission and enforcing **none** is the
+    dangerous case — the table says "administrator only" and the code lets anyone through. A
+    route declared `PUBLIC` that enforces something is the harmless-looking one, and it still
+    makes the table a lie, so it is reported too.
+    """
+    problems: list[str] = []
+    for route in routes:
+        for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
+            decision = declared.get((method, route.path))
+            if decision is None:
+                # Undeclared routes are `test_every_route_declares_a_permission`'s to report;
+                # flagging them here as well would give one fault two voices.
+                continue
+            enforced = enforced_permissions(route)
+            if isinstance(decision, Public):
+                if enforced:
+                    problems.append(
+                        f"{method} {route.path} is declared PUBLIC but enforces "
+                        f"{sorted(p.value for p in enforced)}"
+                    )
+                continue
+            if enforced != {decision}:
+                problems.append(
+                    f"{method} {route.path} declares {decision.value!r} but enforces "
+                    f"{sorted(p.value for p in enforced) or 'nothing'}"
+                )
+    return problems
+
+
+def test_the_route_walk_finds_permission_bearing_routes() -> None:
+    """A guard on the guard: a walk that found no permissions would make the check vacuous, which
+    is exactly how a flat walk over `app.routes` would have failed."""
+    routes = route_objects()
+
+    assert len(routes) >= 10
+    assert sum(1 for route in routes if enforced_permissions(route)) >= 8
+
+
+def test_every_route_enforces_the_permission_it_declares() -> None:
+    """§15.1's "server-side authorization for every action", read as: the table and the code give
+    the same answer."""
+    problems = declaration_mismatches(route_objects(), dict(ROUTE_PERMISSIONS))
+
+    assert problems == [], (
+        "the permission a route declares must be the one it enforces; `ROUTE_PERMISSIONS` is "
+        f"what a reviewer reads to answer who may do this: {problems}"
+    )
+
+
+def _one_route_app(dependency: object | None) -> list[APIRoute]:
+    """A one-route application, optionally enforcing something."""
+    app = FastAPI()
+
+    if dependency is None:
+
+        @app.post("/synthetic/control")
+        def handler() -> dict[str, str]:  # pragma: no cover - never called
+            return {}
+
+    else:
+
+        @app.post("/synthetic/control")
+        def handler_with_permission(  # pragma: no cover - never called
+            principal: Annotated[Principal, Depends(dependency)],
+        ) -> dict[str, str]:
+            return {}
+
+    return [route for route in app.routes if isinstance(route, APIRoute)]
+
+
+def test_the_check_detects_a_route_enforcing_a_different_permission() -> None:
+    """The exact failure `T-069a`'s control exposed, now caught."""
+    routes = _one_route_app(requires(Permission.VIEW_STATUS))
+
+    problems = declaration_mismatches(
+        routes, {("POST", "/synthetic/control"): Permission.PAUSE_SYSTEM}
+    )
+
+    assert len(problems) == 1
+    assert "declares 'pause_system' but enforces ['view_status']" in problems[0]
+
+
+def test_the_check_detects_a_route_that_enforces_nothing() -> None:
+    """The dangerous direction: the table promises an administrator and the code asks nobody."""
+    routes = _one_route_app(None)
+
+    problems = declaration_mismatches(
+        routes, {("POST", "/synthetic/control"): Permission.PAUSE_SYSTEM}
+    )
+
+    assert len(problems) == 1
+    assert "enforces nothing" in problems[0]
+
+
+def test_the_check_detects_a_public_route_that_enforces_something() -> None:
+    """Harmless-looking and still a lie: a reviewer reading `PUBLIC` would not expect a `403`."""
+    routes = _one_route_app(requires(Permission.VIEW_STATUS))
+
+    problems = declaration_mismatches(routes, {("POST", "/synthetic/control"): PUBLIC})
+
+    assert len(problems) == 1
+    assert "declared PUBLIC but enforces" in problems[0]
+
+
+def test_the_check_accepts_agreement() -> None:
+    """The other direction. A checker that flagged the correct shape would be noise, and noise is
+    what gets a structural test deleted."""
+    routes = _one_route_app(requires(Permission.PAUSE_SYSTEM))
+
+    assert (
+        declaration_mismatches(routes, {("POST", "/synthetic/control"): Permission.PAUSE_SYSTEM})
+        == []
+    )
+
+
+def test_the_check_reads_a_mutation_dependency_too() -> None:
+    """`requires_mutation` wraps `requires` and adds CSRF; the enforced permission has to survive
+    that wrapping, or every state-changing route would silently read as enforcing nothing."""
+    routes = _one_route_app(requires_mutation(Permission.APPROVE_MESSAGE))
+
+    assert (
+        declaration_mismatches(routes, {("POST", "/synthetic/control"): Permission.APPROVE_MESSAGE})
+        == []
+    )
+    assert (
+        declaration_mismatches(routes, {("POST", "/synthetic/control"): Permission.VIEW_STATUS})
+        != []
+    )

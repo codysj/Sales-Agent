@@ -1,0 +1,162 @@
+# Continuous integration (T-007; spec §18.1 "one repository and one coordinated release
+# process", §19.2).
+#
+# **This runs the checks the loop runs locally, against a real PostgreSQL.** The suite builds its
+# schema from migrations rather than `metadata.create_all` (backend/tests/conftest.py), which is
+# the whole point: a model that has drifted from its migration must fail here, and it cannot do
+# that against SQLite or against no database at all.
+#
+# **`alembic upgrade head` runs before `pytest`, deliberately.** Every database fixture *skips*
+# when PostgreSQL is unreachable, so a misconfigured service would leave this job green while
+# running only the offline half of the suite. The alembic step uses the same `DATABASE_URL` and
+# fails loudly instead — it is the reachability assertion that stops a silent pass.
+#
+# **Nothing here writes anywhere but the runner.** No deployment, no image publishing, no
+# environment promotion, no `secrets.*` reference, and `contents: read` (T-007 scope). The
+# database credentials below are the throwaway values the service container is created with in
+# this job and nowhere else — the same category as the local defaults in `docker-compose.yml`,
+# not a credential (AGENTS.md rule 3).
+#
+# **The typed contract has no step of its own, on purpose** (`T-163`). The chain is application →
+# `frontend/openapi.json` → `frontend/lib/api-types.ts`, and each arrow already has a test that
+# these two jobs run: `backend/tests/test_fixtures.py::test_the_committed_openapi_document_matches
+# _the_application` compares the committed document with the live application object, and
+# `frontend/tests/api-types.test.ts` regenerates the client from that document and compares. A
+# re-export-and-`git diff` step was written here first and then deleted: it re-states a rule that is
+# already enforced, and the copy nobody exercises is the one that drifts — the same reasoning that
+# removed the duplicate scoped-key guard from the operations flag route. If either test is ever
+# deleted, this comment is the thing that tells you what went with it.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — lint, types, migrations, tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: matrix
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: matrix_sales
+        # 5432 is safe on a runner: nothing native competes for it here, unlike the developer
+        # machine that forced host port 55432 in docker-compose.yml.
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U matrix -d matrix_sales"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://matrix:localdev@localhost:5432/matrix_sales
+      # Stated rather than left to the defaults. These default safe in app/core/settings.py, and
+      # CI is the place that says so out loud: no gate in tasks.md §5 is unlocked, so no run of
+      # this workflow may reach an external system.
+      SHADOW_MODE: "true"
+      OUTBOUND_EMAIL_ENABLED: "false"
+      MODEL_PROVIDER: fake
+      ALLOW_REAL_MODEL_PROVIDER: "false"
+      # Blank means *reject every webhook*, not "skip the check" (§19.4). The tests generate
+      # their own secret per run.
+      WEBHOOK_SIGNING_SECRET: ""
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # Pinned to version tags rather than commit SHAs: a SHA cannot be verified from this
+      # machine, and an unverifiable one that turns out to be wrong breaks CI silently. With
+      # `contents: read`, no secrets, and no publishing step, a moved tag cannot reach anything.
+      #
+      # Every pin below was checked against that version's own `action.yml`, not against its
+      # release notes alone (`T-164a`): notes say what changed, `action.yml` says what exists.
+      - uses: actions/checkout@v7
+
+      # **A full version, not `@v9` — that tag does not exist.** setup-uv stopped publishing
+      # major and minor tags at v8 ("use immutable tags like `@v8.0.0` instead"), so the obvious
+      # tidy-up of shortening this to `@v9` would break every run. `enable-cache` is still
+      # declared at v9.0.0; its default changed to `auto`, and this passes `true` explicitly.
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      # `--frozen` refuses to resolve: if uv.lock and pyproject.toml disagree, that is a failure
+      # rather than a quiet re-resolution CI never records.
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # The canonical command list, tasks.md §2.
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Types
+        run: uv run mypy app
+
+      # Also the reachability assertion for the step after next. See the header.
+      - name: Migrations apply
+        run: uv run alembic upgrade head
+
+      # Refuses if the models have drifted from the migrations.
+      - name: Migrations match the models
+        run: uv run alembic check
+
+      - name: Tests
+        run: uv run pytest -q
+
+  frontend:
+    name: Dashboard — lint, types, tests, build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node pinned to the major the dashboard is developed against. `package.json` declares
+      # no `engines` range, so this file is where the version is stated; a floating "latest"
+      # would make a Node release a failure nobody changed anything to cause.
+      #
+      # The action itself is v7, which still declares `node-version`, `cache`, and
+      # `cache-dependency-path` (checked in its `action.yml`). v5 added automatic
+      # package-manager caching and v6 narrowed it to npm; neither removes the explicit
+      # `cache:` this job sets, which is what it relies on.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` installs from the lockfile and refuses if it disagrees with package.json — the
+      # `uv sync --frozen` of this job.
+      - name: Install dependencies
+        run: npm ci
+
+      # The canonical command list, tasks.md §2.
+      - name: Lint
+        run: npm run lint
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build

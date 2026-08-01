@@ -137,9 +137,17 @@ class ProductStatusVersion(Base, TimestampMixin):
     )
     source_date: Mapped[date | None] = mapped_column(Date)
 
-    #: Who approved this readiness and when (§14.4). Held as an identity string until T-012's
-    #: user table exists; T-136 converts it to a foreign key.
-    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: Who approved this readiness and when (§14.4).
+    #:
+    #: A foreign key to `app_user.email`, not to `app_user.id` (`T-136b`, ADR-024). The email is
+    #: what the production path already records (`principal.user.email`), and keeping it in the
+    #: column means the row still says *who* without a join — the same reason `audit_event.actor_id`
+    #: stays readable. `RESTRICT` is the point: an approver with history cannot be deleted.
+    approved_by: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("app_user.email", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    )
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

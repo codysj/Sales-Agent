@@ -70,7 +70,8 @@ class VersionedArtefact(TimestampMixin):
     #: NULL means it runs until something supersedes it.
     effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    #: Identity string until T-012's user table exists; T-136 converts it.
+    #: An `Actor` id, not a user (ADR-025). `T-136` deliberately did **not** convert this one:
+    #: a prompt or schema version is published by a process as often as by a person.
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 

@@ -77,6 +77,11 @@ class Permission(Enum):
     APPROVE_CANDIDATE = "approve_candidate"
     APPROVE_MESSAGE = "approve_message"
     #: Tier 5 — administrative. Never delegated (§7.4).
+    #: A *read*, and still tier 5: the operations overview reports dead-job reasons, backlog
+    #: depths, and which safety switches are thrown. That is the map an attacker would want and
+    #: the detail an operator needs, so it is declared administrative rather than folded into
+    #: `VIEW_STATUS`, which every role holds (`T-069a`).
+    VIEW_OPERATIONS = "view_operations"
     MANAGE_IDENTITY = "manage_identity"
     MANAGE_INTEGRATIONS = "manage_integrations"
     PAUSE_SYSTEM = "pause_system"
@@ -94,6 +99,7 @@ PERMISSION_TIERS: Final[dict[Permission, Tier]] = {
     Permission.MANAGE_PRODUCT_CLAIMS: Tier.LOW_RISK_INTERNAL_CHANGE,
     Permission.APPROVE_CANDIDATE: Tier.EXTERNAL_COMMUNICATION,
     Permission.APPROVE_MESSAGE: Tier.EXTERNAL_COMMUNICATION,
+    Permission.VIEW_OPERATIONS: Tier.ADMINISTRATIVE,
     Permission.MANAGE_IDENTITY: Tier.ADMINISTRATIVE,
     Permission.MANAGE_INTEGRATIONS: Tier.ADMINISTRATIVE,
     Permission.PAUSE_SYSTEM: Tier.ADMINISTRATIVE,
@@ -125,6 +131,7 @@ ROLE_GRANTS: Final[dict[Permission, frozenset[RoleKey]]] = {
     # outbound message, and §7.4 tier 5 is a separate row from tier 4 for that reason.
     Permission.APPROVE_CANDIDATE: frozenset({RoleKey.OPERATOR_REVIEWER}),
     Permission.APPROVE_MESSAGE: frozenset({RoleKey.OPERATOR_REVIEWER}),
+    Permission.VIEW_OPERATIONS: frozenset({RoleKey.SYSTEM_ADMINISTRATOR}),
     Permission.MANAGE_IDENTITY: frozenset({RoleKey.SYSTEM_ADMINISTRATOR}),
     Permission.MANAGE_INTEGRATIONS: frozenset({RoleKey.SYSTEM_ADMINISTRATOR}),
     Permission.PAUSE_SYSTEM: frozenset({RoleKey.SYSTEM_ADMINISTRATOR}),
@@ -169,6 +176,12 @@ ROUTE_PERMISSIONS: Final[dict[tuple[str, str], Permission | Public]] = {
     ("GET", "/api/review/candidates"): Permission.VIEW_REVIEW_QUEUE,
     ("GET", "/api/review/revisions"): Permission.VIEW_REVIEW_QUEUE,
     ("GET", "/api/review/attention/approvals"): Permission.VIEW_REVIEW_QUEUE,
+    # Tier 5 for a read: see . The overview reports dead-job reasons and which
+    # safety switches are thrown.
+    ("GET", "/api/operations/overview"): Permission.VIEW_OPERATIONS,
+    # Tier 5, and the same permission that names the authority: these are the switches that
+    # stop the system. Never a reuse of a lower tier.
+    ("POST", "/api/operations/flags/{key}"): Permission.PAUSE_SYSTEM,
     # Revoking is the same authority as approving: a role that could withdraw but not grant
     # could stop any outreach it disliked, and one that could grant but not withdraw could not
     # undo its own mistake.

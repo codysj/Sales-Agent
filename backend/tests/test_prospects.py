@@ -99,7 +99,7 @@ def test_two_spellings_of_a_domain_collide(db_session: Session) -> None:
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("A@X.com", "a@x.com"),
+        ("A@X.example.com", "a@x.example.com"),
         ("  Sales@Example.COM ", "sales@example.com"),
         ("MiXeD.CaSe@Example.Org", "mixed.case@example.org"),
     ],
@@ -109,7 +109,7 @@ def test_emails_normalize(raw: str, expected: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "raw", ["", "   ", "not-an-email", "no@domain", "two@@at.com", "a b@c.com"]
+    "raw", ["", "   ", "not-an-email", "no@domain", "two@@at.com", "a b@example.com"]
 )
 def test_unusable_emails_are_rejected(raw: str) -> None:
     with pytest.raises(NormalizationError):
@@ -138,7 +138,7 @@ def test_contact_point_emails_are_normalized_on_write(
 
 
 def test_the_same_email_in_two_cases_collides(db_session: Session, contact: Contact) -> None:
-    """The criterion-1 case: `A@X.com` and `a@x.com` must be one contact point."""
+    """The criterion-1 case: `A@X.example.com` and `a@x.example.com` must be one contact point."""
     db_session.add(
         ContactPoint(contact_id=contact.id, type=ContactPointType.EMAIL, value="A@X.example.com")
     )

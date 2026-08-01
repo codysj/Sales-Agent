@@ -107,6 +107,8 @@ class Suppression(Base, TimestampMixin):
     jurisdiction: Mapped[str | None] = mapped_column(String(100))
 
     lifted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: An `Actor` id, not a user (ADR-025). Human-only today; §15.6 lets a policy source lift
+    #: one, and this column must not have to change on the day that happens.
     lifted_by: Mapped[str | None] = mapped_column(String(255))
     lifted_reason: Mapped[str | None] = mapped_column(Text)
 
@@ -272,3 +274,97 @@ def record_suppression(
     )
     session.add(suppression)
     return suppression
+
+
+def _existing_opt_out(
+    session: Session, *, scope: SuppressionScope, identity: str, at: datetime
+) -> Suppression | None:
+    """An opt-out already on file for this exact identity, or ``None``.
+
+    Only :data:`UNLIFTABLE_SOURCES` count. A `MANUAL` or `IMPORT` suppression on the same identity
+    is *not* the same thing and must not stand in for one: it can be lifted with a reason, and the
+    whole point of the opt-out record is that it cannot.
+    """
+    rows = (
+        session.execute(
+            select(Suppression).where(Suppression.scope == scope, Suppression.identity == identity)
+        )
+        .scalars()
+        .all()
+    )
+    for row in rows:
+        if row.source in UNLIFTABLE_SOURCES and row.is_active_at(at):
+            return row
+    return None
+
+
+def record_opt_out(
+    session: Session,
+    *,
+    email: str,
+    reason: str,
+    source: SuppressionSource = SuppressionSource.UNSUBSCRIBE,
+    contact_id: uuid.UUID | None = None,
+    jurisdiction: str | None = None,
+    at: datetime | None = None,
+) -> list[Suppression]:
+    """Honour an opt-out (§15.8 "clear opt-out handling and immediate suppression", §15.6).
+
+    This is the one entry point for "this person asked not to be contacted", and it is deliberately
+    narrower than :func:`record_suppression` in every direction that could lose an opt-out:
+
+    * **Permanent.** ``source`` must be one of :data:`UNLIFTABLE_SOURCES`. Recording an opt-out as
+      `MANUAL` would leave it liftable, which is the one property it must never have, so a liftable
+      source is refused rather than quietly downgraded.
+    * **Immediate, and never future-dated.** ``effective_at`` is clamped to now. A caller passing a
+      future timestamp — a provider clock running ahead, a replayed event — would otherwise open a
+      window in which the send transaction still lets the message through. A past ``at`` is honoured
+      as given, because suppressing *earlier* is the safe direction.
+    * **Idempotent.** The same unsubscribe delivered twice records one suppression. Suppressions
+      cannot be deleted (§15.6), so duplicates are permanent noise in the one table an operator
+      reads to answer "why was this person not contacted".
+    * **The person, not just the mailbox.** When the contact is known, a `PERSON`-scope record goes
+      in alongside the `EMAIL` one, so opting out of one address is not undone by a second address
+      on the same contact.
+
+    "Immediately across active campaigns" needs no fan-out: eligibility (§10.1) and the final send
+    transaction (§11.4) both read suppression live, so the next evaluation of an already-approved
+    candidate refuses it. Returns every suppression now covering the opt-out, newly written or
+    already on file.
+
+    Raises :class:`NormalizationError` if the address cannot be parsed. That is deliberate — a
+    suppression stored under an unparseable key would never match a check, and failing loudly is
+    better than a record that only looks like protection.
+    """
+    if source not in UNLIFTABLE_SOURCES:
+        permanent = ", ".join(sorted(item.value for item in UNLIFTABLE_SOURCES))
+        raise SuppressionError(
+            f"an opt-out may not be recorded under source {source.value!r}: only {permanent} "
+            f"cannot be lifted, and an opt-out that can be lifted is not an opt-out (§15.6)"
+        )
+
+    now = datetime.now(UTC)
+    moment = min(at, now) if at is not None else now
+
+    targets = [(SuppressionScope.EMAIL, normalize_email(email))]
+    if contact_id is not None:
+        targets.append((SuppressionScope.PERSON, str(contact_id)))
+
+    recorded: list[Suppression] = []
+    for scope, identity in targets:
+        existing = _existing_opt_out(session, scope=scope, identity=identity, at=moment)
+        if existing is not None:
+            recorded.append(existing)
+            continue
+        recorded.append(
+            record_suppression(
+                session,
+                scope=scope,
+                identity=identity,
+                source=source,
+                reason=reason,
+                effective_at=moment,
+                jurisdiction=jurisdiction,
+            )
+        )
+    return recorded

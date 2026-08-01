@@ -38,6 +38,7 @@ from app.core.settings import Settings
 from app.jobs_and_outbox.outbox import (
     DISPATCHABLE_STATES,
     ENTITY_TYPE,
+    RECHECK_REFUSED_ACTION,
     OutboxError,
     OutboxEvent,
     OutboxState,
@@ -245,6 +246,7 @@ def _settle(
     actor: Actor,
     next_attempt_at: datetime | None = None,
     refused_check: str | None = None,
+    refused_scope: str | None = None,
 ) -> None:
     """Record an outcome against an outbox event, atomically with its audit event (§17.2)."""
     previous = event.state
@@ -270,11 +272,15 @@ def _settle(
         # §11.4 criterion 2: the trail has to say *which* condition stopped the send, or a reviewer
         # cannot tell a revoked approval from a paused campaign.
         payload["refused_check"] = refused_check
+    if refused_scope is not None:
+        # `T-161`: the scope that matched, so a suppressed-send attempt is a countable row and not
+        # a substring somebody greps `last_detail` for. A category only — see `_refusal_attributes`.
+        payload["refused_scope"] = refused_scope
 
     record_audit_event(
         session,
         actor=actor,
-        action="outbox.recheck_refused" if refused_check else "outbox.dispatched",
+        action=RECHECK_REFUSED_ACTION if refused_check else "outbox.dispatched",
         entity_type=ENTITY_TYPE,
         entity_id=event.id,
         from_state=previous,
@@ -284,17 +290,23 @@ def _settle(
     )
 
 
-def _refusal_attributes(error: Exception) -> tuple[str, str, bool]:
-    """Read the check name, detail, and recoverability off a domain refusal.
+def _refusal_attributes(error: Exception) -> tuple[str, str, bool, str | None]:
+    """Read the check name, detail, recoverability, and matched scope off a domain refusal.
 
     Read by attribute rather than by importing the domain's exception type, because importing it
     would be exactly the §18.2 violation the injected check exists to avoid. A refusal that does
     not carry these attributes is still refused — it is only described less precisely.
+
+    ``scope`` is optional and only suppression sets it today (`T-161`). It is a category, never an
+    address or a name: §15.5 keeps those out of the trail, and the exception that raises it is
+    responsible for having stripped them (`outreach_and_replies.preconditions.SuppressedAtSend`).
     """
     check = str(getattr(error, "check", "") or type(error).__name__)
     detail = str(getattr(error, "detail", "") or error)
     recoverable = bool(getattr(error, "is_recoverable", False))
-    return check, detail, recoverable
+    raw_scope = getattr(error, "scope", None)
+    scope = str(raw_scope) if isinstance(raw_scope, str) and raw_scope.strip() else None
+    return check, detail, recoverable, scope
 
 
 def _run_preconditions(
@@ -320,7 +332,7 @@ def _run_preconditions(
     except OutboxError:
         raise
     except Exception as error:
-        name, detail, recoverable = _refusal_attributes(error)
+        name, detail, recoverable, scope = _refusal_attributes(error)
         result = EffectResult(
             outcome=EffectOutcome.TRANSIENT_FAILURE if recoverable else EffectOutcome.REJECTED,
             detail=f"§11.4 recheck {name} refused: {detail}",
@@ -338,9 +350,18 @@ def _run_preconditions(
                 actor=actor,
                 next_attempt_at=datetime.now(UTC) + TRANSIENT_BACKOFF,
                 refused_check=name,
+                refused_scope=scope,
             )
         else:
-            _settle(session, event, OutboxState.FAILED, result, actor=actor, refused_check=name)
+            _settle(
+                session,
+                event,
+                OutboxState.FAILED,
+                result,
+                actor=actor,
+                refused_check=name,
+                refused_scope=scope,
+            )
 
         log.warning(
             "outbox.recheck_refused",

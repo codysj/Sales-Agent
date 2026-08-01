@@ -142,6 +142,8 @@ class CandidateDecision(Base, TimestampMixin):
     #: §17.5 wants the human/service actor on every decision. Denormalized from the audit event on
     #: purpose: this table is the evaluation dataset, and a dataset that needs a join to another
     #: subsystem to say who decided is a dataset people will analyse without the actor.
+    #: `decided_by` is an `Actor` id, not a user (ADR-025), and `decided_by_type` is the
+    #: discriminator — an agent decides here as legitimately as a reviewer does.
     decided_by_type: Mapped[str] = mapped_column(String(20), nullable=False)
     decided_by: Mapped[str] = mapped_column(String(255), nullable=False)
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -25,8 +25,6 @@ pipeline job type yet, and building those is `T-058b`. The exit-evidence record 
 gate change are `T-058c`. This module owns criteria 1 to 3 only.
 """
 
-import csv
-import io
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -53,6 +51,7 @@ from app.drafts_and_approvals.jobs import DEFAULT_MODEL_CONFIG_KEY as DRAFT_CONF
 from app.drafts_and_approvals.models import MessageDraft, MessageRevision
 from app.fixtures import PROSPECTS_CSV
 from app.fixtures.synthetic import seed_synthetic
+from app.intake import enqueue_memberships_for_import
 from app.jobs_and_outbox.models import Job, JobState
 from app.jobs_and_outbox.queue import enqueue, lease_jobs
 from app.jobs_and_outbox.registry import registry as job_registry
@@ -63,7 +62,7 @@ from app.model_gateway.providers.fake import FakeModelAdapter
 from app.model_gateway.registry import reset_fake_adapter_factory, set_fake_adapter_factory
 from app.model_gateway.schemas import register_schema_versions
 from app.products_and_claims.models import Product
-from app.prospects.imports import import_csv, parse_row
+from app.prospects.imports import import_csv
 from app.prospects.models import (
     Account,
     Contact,
@@ -159,20 +158,6 @@ class SliceResult:
             .join(Campaign, CampaignCandidate.campaign_id == Campaign.id)
         ).all():
             self.revisions[slug].append(revision)
-
-
-def _rows_with_campaigns() -> list[tuple[dict[str, str], list[str]]]:
-    """Each CSV row's normalized identity paired with the campaigns it names.
-
-    `ImportRow` ignores the `campaigns` column on purpose — membership is `campaigns`' business,
-    not `prospects`' — so the slice reads it here, which is what a future import job will do.
-    """
-    text = PROSPECTS_CSV.read_bytes().decode("utf-8-sig")
-    rows = []
-    for raw in csv.DictReader(io.StringIO(text)):
-        slugs = [slug.strip() for slug in (raw.get("campaigns") or "").split("|") if slug.strip()]
-        rows.append((raw, slugs))
-    return rows
 
 
 class TaskRoutingFake:
@@ -293,41 +278,19 @@ def run_slice(session: Session) -> SliceResult:
 
     # --- §8.3 step 2 onwards: one membership job per row, then the worker ------------------------
 
-    for index, (raw, slugs) in enumerate(_rows_with_campaigns()):
-        try:
-            row = parse_row(raw)
-        except Exception:
-            continue
-
-        account = session.execute(
-            select(Account).where(Account.domain == row.account_domain)
-        ).scalar_one_or_none()
-        if account is None:
-            continue
-        contact = session.execute(
-            select(Contact).where(
-                Contact.account_id == account.id, Contact.full_name == row.full_name
-            )
-        ).scalar_one_or_none()
-
-        # One job per (row, campaign) rather than one per row, so the correlation ID stays
-        # per *candidate* the way the direct composition had it: a both-campaigns row would
-        # otherwise give two candidates one ID and §8.1's independent judgements would share a
-        # trail. Every job in a candidate's chain inherits this from the job that enqueued it,
-        # so a prospect's whole history is one `WHERE correlation_id = ?` (§3.5, §17.5) — and
-        # unlike the direct composition, nothing has to remember to thread it through each call.
-        for slug in slugs:
-            enqueue(
-                session,
-                job_type=MEMBERSHIP_JOB_TYPE,
-                payload={
-                    "account_id": str(account.id),
-                    "contact_id": str(contact.id) if contact else None,
-                    "campaign_slugs": [slug],
-                },
-                actor=OPERATOR,
-                correlation_id=f"corr-slice-row-{index}-{slug}",
-            )
+    # **The production function, not a copy** (`T-173`). This loop used to live here, and
+    # `app/intake.py` was written from it when `T-169` found that nothing under `app/` turned an
+    # import into membership work. Two copies of the same rule are how they stop agreeing, and the
+    # one under test should be the one that runs. It still enqueues one job per (row, campaign)
+    # with a per-candidate correlation ID; the ID's *shape* changed to
+    # `import-<batch>-<row>-<slug>`, which nothing here asserts — the tests read IDs back off the
+    # audit events and check only that they are distinct.
+    enqueue_memberships_for_import(
+        session,
+        content=PROSPECTS_CSV.read_bytes(),
+        batch_id=imported.batch.id,
+        actor=OPERATOR,
+    )
 
     result.jobs_before_approval = drain(session)
 

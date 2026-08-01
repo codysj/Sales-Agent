@@ -31,7 +31,7 @@ from app.products_and_claims.claims import (
     valid_claims_for_campaign,
 )
 from app.products_and_claims.models import Product
-from tests.factories import NOW
+from tests.factories import CLAIM_OWNER, NOW, OWNER_ONE, OWNER_TWO
 
 EARLIER = NOW - timedelta(days=30)
 LATER = NOW + timedelta(days=30)
@@ -65,7 +65,7 @@ def make_claim(
         "version": 1,
         "product_id": product.id,
         "text": "SYNTHETIC-approved sentence about a synthetic product.",
-        "approved_by": "claim-owner-1",
+        "approved_by": CLAIM_OWNER,
         "approved_at": EARLIER,
         "effective_from": EARLIER,
         "expires_or_review_by": LATER,
@@ -144,7 +144,7 @@ def test_claims_are_synthetic_by_default(db_session: Session, product: Product) 
         version=1,
         product_id=product.id,
         text="SYNTHETIC-text",
-        approved_by="owner",
+        approved_by=OWNER_ONE,
         approved_at=EARLIER,
         effective_from=EARLIER,
         expires_or_review_by=LATER,
@@ -203,7 +203,7 @@ def test_a_valid_set_resolves(db_session: Session, product: Product, campaign: C
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[claim],
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=NOW,
     )
     db_session.flush()
@@ -227,7 +227,7 @@ def test_an_expired_member_fails_the_whole_set(
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[good, expiring],
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=EARLIER,
     )
     db_session.flush()
@@ -250,7 +250,7 @@ def test_a_superseded_member_fails_the_whole_set(
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[claim],
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=EARLIER,
     )
     db_session.flush()
@@ -307,7 +307,7 @@ def test_publishing_refuses_a_claim_not_allowed_for_the_campaign(
             product_id=product.id,
             campaign_id=campaign.id,
             claims=[unlinked],
-            approved_by="owner-1",
+            approved_by=OWNER_ONE,
             approved_at=NOW,
         )
 
@@ -325,7 +325,7 @@ def test_publishing_refuses_an_expired_claim(
             product_id=product.id,
             campaign_id=campaign.id,
             claims=[stale],
-            approved_by="owner-1",
+            approved_by=OWNER_ONE,
             approved_at=NOW + timedelta(days=1),
         )
 
@@ -340,7 +340,7 @@ def test_a_set_whose_member_link_was_revoked_fails(
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[claim],
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=NOW,
     )
     db_session.flush()
@@ -367,7 +367,7 @@ def test_publishing_supersedes_the_previous_set(
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[claim],
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=NOW,
     )
     db_session.flush()
@@ -377,7 +377,7 @@ def test_publishing_supersedes_the_previous_set(
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[claim],
-        approved_by="owner-2",
+        approved_by=OWNER_TWO,
         approved_at=NOW + timedelta(days=1),
     )
     db_session.flush()
@@ -398,7 +398,7 @@ def test_set_versions_are_unique_per_product_and_campaign(
             product_id=product.id,
             campaign_id=campaign.id,
             version=1,
-            approved_by="owner-1",
+            approved_by=OWNER_ONE,
             approved_at=NOW,
         )
     )
@@ -408,7 +408,7 @@ def test_set_versions_are_unique_per_product_and_campaign(
             product_id=product.id,
             campaign_id=campaign.id,
             version=1,
-            approved_by="owner-2",
+            approved_by=OWNER_TWO,
             approved_at=NOW,
         )
     )
@@ -461,7 +461,7 @@ def test_set_membership_cannot_be_repointed(
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[first],
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=NOW,
     )
     db_session.flush()
@@ -482,7 +482,7 @@ def test_a_claim_cited_by_a_set_cannot_be_deleted(
         product_id=product.id,
         campaign_id=campaign.id,
         claims=[claim],
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=NOW,
     )
     db_session.flush()

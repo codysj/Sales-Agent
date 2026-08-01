@@ -16,6 +16,7 @@ import uuid
 import pytest
 import structlog
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit_and_operations.models import ActorType, AuditEvent
@@ -497,3 +498,59 @@ def test_the_corpus_baseline_rows_import_verified(db_session: Session) -> None:
     # The corpus's refusal cases must not have come along for the ride.
     assert "india.person@india.example.com" not in verified
     assert "hotel.person@hotel.example.org" not in verified
+
+
+# --- T-144a: a contact records where it came from -----------------------------------------------
+
+
+def imported_contact(session: Session, name: str) -> Contact:
+    return session.execute(select(Contact).where(Contact.full_name == name)).scalar_one()
+
+
+def test_an_imported_contact_names_the_batch_it_came_from(db_session: Session) -> None:
+    """Criterion 1, end to end through `import_csv` rather than by setting the column."""
+    result = import_csv(
+        db_session, content=csv_bytes(GOOD_ROW), source_name="alpha.csv", actor=OPERATOR
+    )
+
+    contact = imported_contact(db_session, "SYNTHETIC Person Alpha")
+    assert contact.source_import_batch_id == result.batch.id
+    batch = db_session.get(ImportBatch, contact.source_import_batch_id)
+    assert batch is not None
+    assert batch.source_type == "csv"
+    assert batch.source_name == "alpha.csv"
+
+
+def test_a_reused_contact_keeps_its_original_batch(db_session: Session) -> None:
+    """Criterion 2. An identity does not change where it came from because somebody uploaded a
+    second file mentioning the same person — and `T-144b` refuses on this value, so a later
+    import silently re-attributing a person would be a provenance claim nobody made."""
+    first = import_csv(
+        db_session, content=csv_bytes(GOOD_ROW), source_name="first.csv", actor=OPERATOR
+    )
+    # A second file naming the same person at the same account, with a different contact point so
+    # the row is not rejected as an exact duplicate.
+    second_row = (
+        "alpha.example.com,SYNTHETIC-Account-Alpha,US,SYNTHETIC Person Alpha,"
+        "SYNTHETIC Lead,email,alpha.second@alpha.example.com"
+    )
+    second = import_csv(
+        db_session, content=csv_bytes(second_row), source_name="second.csv", actor=OPERATOR
+    )
+
+    assert second.batch.id != first.batch.id, "the two imports must be different batches"
+    contact = imported_contact(db_session, "SYNTHETIC Person Alpha")
+    assert contact.source_import_batch_id == first.batch.id
+
+
+def test_the_batch_a_contact_names_cannot_be_deleted(db_session: Session) -> None:
+    """`RESTRICT`. Deleting the batch would delete the explanation of where a person came from."""
+    result = import_csv(
+        db_session, content=csv_bytes(GOOD_ROW), source_name="alpha.csv", actor=OPERATOR
+    )
+    batch = result.batch
+
+    db_session.delete(batch)
+    with pytest.raises(IntegrityError, match="source_import_batch_id"):
+        db_session.flush()
+    db_session.rollback()

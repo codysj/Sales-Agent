@@ -23,10 +23,13 @@ carrying one is a credential in a file with different access rules to the databa
 for the actor, not the secret. `sessions.issue_session` logs the session id; this logs nothing at
 all beyond what that already recorded.
 
-**No cookie is set.** The dashboard holds the token and sends it as a bearer, because `T-065a`
-refuses cookie authentication on mutations until `T-070` adds CSRF. Setting a cookie here would
-create exactly the exposure that refusal exists to remove. `current_principal` still *reads* a
-cookie — for a client that has one — but nothing here issues one.
+**Cookies are set, and `T-070a` is what made that safe.** Until then nothing here issued one:
+`current_principal` read a cookie for a client that had one, and no client could get one, because
+a cookie mutation had no CSRF defence and setting one would have created exactly the exposure the
+refusal existed to remove. Now the session cookie is `HttpOnly` and `SameSite`, a readable CSRF
+cookie goes with it, and `requires_mutation` refuses a cookie mutation that does not echo the
+token. The token is still returned in the body as well — the dashboard uses that, and moving it
+off bearer authentication is a separate, observable change.
 
 **Signing out revokes; it does not forget.** The row stays, with `revoked_at`, `revoked_by`, and a
 reason, because §17.5 wants state-transition history and a deleted session is a question nobody
@@ -37,12 +40,13 @@ from datetime import datetime
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.core.security import CSRF_COOKIE, cookie_is_secure, csrf_token_for
 from app.core.settings import Settings, get_settings
-from app.identity.dependencies import PrincipalDep, db_session
+from app.identity.dependencies import SESSION_COOKIE, PrincipalDep, db_session
 from app.identity.sessions import Principal, SessionError, resolve, revoke
 from app.identity.stub import StubRefused, UnknownStubUser, require_stub_allowed, stub_sign_in
 
@@ -79,6 +83,38 @@ class SessionResponse(BaseModel):
     token: str | None = None
 
 
+def _set_session_cookies(response: Response, token: str, *, settings: Settings) -> None:
+    """Put the session and its CSRF token in cookies (`T-070a`, §15.1).
+
+    `max_age` is deliberately absent from both, making them session cookies that die with the
+    browser: the row expires in eight hours (`T-061a`), and a cookie outliving it would leave a
+    reviewer looking at a dashboard that answers `401` to everything with no visible reason.
+    """
+    secure = cookie_is_secure(settings.app_env)
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        # The credential itself: script must never read it, which is what makes stealing the
+        # readable CSRF cookie useless on its own.
+        httponly=True,
+        secure=secure,
+        # `lax`, not `strict`: `strict` would drop the cookie on a link followed in from an email
+        # or a chat message, so a reviewer clicking a dashboard link would land signed out. Both
+        # values stop the cross-site POST this exists to stop.
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        CSRF_COOKIE,
+        csrf_token_for(token),
+        # Readable on purpose — the client has to echo it. It authenticates nothing by itself.
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+
+
 def _describe(principal: Principal, *, token: str | None = None) -> SessionResponse:
     return SessionResponse(
         user_id=str(principal.user.id),
@@ -99,6 +135,7 @@ def _describe(principal: Principal, *, token: str | None = None) -> SessionRespo
 )
 def stub_sign_in_endpoint(
     request: StubSignInRequest,
+    response: Response,
     session: Annotated[Session, Depends(db_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SessionResponse:
@@ -138,7 +175,10 @@ def stub_sign_in_endpoint(
             detail="the session was issued but does not resolve",
         )
 
-    # The token is deliberately absent from this line. §17.5 wants the actor, not the credential.
+    _set_session_cookies(response, issued.token, settings=settings)
+
+    # The token is deliberately absent from this line, and so is the CSRF value derived from it.
+    # §17.5 wants the actor, not the credential.
     log.info("session.issued", user_id=str(principal.user.id), session_id=str(issued.session.id))
     return _describe(principal, token=issued.token)
 
@@ -170,6 +210,7 @@ def read_session(principal: PrincipalDep) -> SessionResponse:
     summary="Sign out, revoking the current session",
 )
 def sign_out(
+    response: Response,
     principal: PrincipalDep,
     session: Annotated[Session, Depends(db_session)],
 ) -> None:
@@ -178,7 +219,15 @@ def sign_out(
     A caller with no session gets `204` rather than `401`: signing out when already signed out is
     the state they asked for, and answering `401` would make a dashboard sign-out button fail for
     a reviewer whose session had just expired.
+
+    Both cookies are cleared **before** the `principal is None` return, so a caller holding a
+    cookie the server no longer honours still gets rid of it. Leaving a dead session cookie in the
+    browser is how a reviewer ends up signed out and unable to sign in again without knowing to
+    clear cookies by hand.
     """
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(CSRF_COOKIE, path="/")
+
     if principal is None:
         return
 

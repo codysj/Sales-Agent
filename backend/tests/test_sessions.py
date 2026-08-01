@@ -211,10 +211,14 @@ def test_the_stub_signs_in_an_existing_local_user(db_session: Session) -> None:
 def test_the_stub_creates_nobody(db_session: Session) -> None:
     """An unknown email is refused. Auto-provisioning would mean the roster grew by whoever typed
     something, and `Q-005`/`Q-026` leave the real roster undecided."""
+    # A delta rather than an absolute count: `T-136b`'s foreign keys mean the `db_session` fixture
+    # seeds the suite's approver identities. "Nobody was created" is what this test means.
+    before = db_session.execute(select(func.count()).select_from(User)).scalar_one()
+
     with pytest.raises(UnknownStubUser):
         stub_sign_in(db_session, "synthetic.nobody@example.com", settings=LOCAL, at=NOW)
 
-    assert db_session.execute(select(func.count()).select_from(User)).scalar_one() == 0
+    assert db_session.execute(select(func.count()).select_from(User)).scalar_one() == before
 
 
 def test_the_stub_accepts_the_address_as_typed(db_session: Session) -> None:

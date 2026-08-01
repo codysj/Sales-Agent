@@ -37,7 +37,12 @@ from app.drafts_and_approvals.validation import (
     apply_validation,
     validate_revision,
 )
-from app.products_and_claims.claim_models import ApprovedClaim, ApprovedClaimCampaign
+from app.products_and_claims.claim_models import (
+    ApprovedClaim,
+    ApprovedClaimCampaign,
+    ApprovedClaimSet,
+)
+from app.products_and_claims.claims import publish_claim_set
 from app.products_and_claims.models import (
     Product,
     ProductStatusVersion,
@@ -58,10 +63,9 @@ from app.research_and_evidence.models import (
     SourceQuality,
     SourceType,
 )
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
-APPROVER = "approver-1"
 MODULE = Path(__file__).resolve().parents[1] / "app" / "drafts_and_approvals" / "validation.py"
 
 CLAIM_TEXT = "SYNTHETIC EXAMPLE CLAIM — offered for evaluation deployments."
@@ -180,6 +184,22 @@ class World:
             self.session.add(ApprovedClaimCampaign(claim_id=claim.id, campaign_id=self.campaign.id))
             self.session.flush()
         return claim
+
+    def publish_current_claim_set(self) -> ApprovedClaimSet:
+        """The campaign's current approved claim set — what `T-157` makes an approval pin.
+
+        Not built in `__init__`: `T-055` validates individual claims and never reads the set, so
+        the world *this* module is about does not need one. The approval suites, which inherit
+        this world, do — an approval now refuses to be granted without one.
+        """
+        return publish_claim_set(
+            self.session,
+            product_id=self.product.id,
+            campaign_id=self.campaign.id,
+            claims=[self.claim],
+            approved_by=APPROVER,
+            approved_at=NOW,
+        )
 
     def make_revision(
         self,

@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 import pytest
+import structlog
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -24,8 +25,10 @@ from app.fixtures.synthetic import (
     SYNTHETIC_PREFIX,
     SeedRefused,
     fixture_strings,
+    seed_approver,
     seed_synthetic,
 )
+from app.identity.models import User
 from app.products_and_claims.claim_models import (
     ApprovedClaim,
     ApprovedClaimSet,
@@ -34,6 +37,7 @@ from app.products_and_claims.claim_models import (
 from app.products_and_claims.claims import get_valid_claim_set
 from app.products_and_claims.models import Product, ProductStatusVersion, ReadinessCategory
 from app.products_and_claims.status import require_effective_status
+from tests.factories import World
 from tests.test_module_boundaries import APP, imported_app_packages
 
 #: Vocabulary a placeholder claim must never use. Availability, certification, pricing, and
@@ -200,6 +204,88 @@ def test_seeding_creates_both_worlds(db_session: Session) -> None:
     }
 
 
+# --- T-136a: an approver is somebody -------------------------------------------------------------
+
+
+def test_seeding_creates_the_approver_as_a_real_user(db_session: Session) -> None:
+    """Criterion 1. Every seeded approval used to name a string that resolved to no row at all."""
+    assert seed_approver(db_session) is None
+
+    seed_synthetic(db_session, settings=TEST_SETTINGS)
+
+    user = seed_approver(db_session)
+    assert user is not None
+    assert user.email == SEED_APPROVER
+    assert user.active
+
+
+def test_seeding_twice_does_not_create_a_second_approver(db_session: Session) -> None:
+    seed_synthetic(db_session, settings=TEST_SETTINGS)
+    seed_synthetic(db_session, settings=TEST_SETTINGS)
+
+    assert (
+        db_session.execute(
+            select(func.count()).select_from(User).where(User.email == SEED_APPROVER)
+        ).scalar_one()
+        == 1
+    )
+
+
+def test_every_approver_the_seed_writes_resolves_to_a_user(db_session: Session) -> None:
+    """Criterion 2, and the reason this task exists at all.
+
+    Asked of the **database**, not of the constant: `T-136b` adds a foreign key over exactly these
+    columns, and what it needs true is that no approver value anywhere in a seeded database is a
+    string nobody can look up. Reading `SEED_APPROVER` back would prove only that the constant
+    equals itself, and would keep passing if a writer were changed to record something else.
+    """
+    seed_synthetic(db_session, settings=TEST_SETTINGS)
+
+    written = set(
+        db_session.execute(select(ProductStatusVersion.approved_by)).scalars().all()
+    ) | set(db_session.execute(select(ApprovedClaim.approved_by)).scalars().all())
+    written |= set(db_session.execute(select(ApprovedClaimSet.approved_by)).scalars().all())
+    written |= set(db_session.execute(select(CampaignPolicyVersion.approved_by)).scalars().all())
+    assert written, "the seed recorded no approver at all, so this proves nothing"
+
+    known = set(db_session.execute(select(User.email)).scalars().all())
+    assert not (written - known), f"approver values with no user row: {sorted(written - known)}"
+
+
+def test_the_shared_factory_names_an_approver_that_resolves_too(db_session: Session) -> None:
+    """The same property for `World`, which is the other place approver values are written.
+
+    Without this the factory half of `T-136a` would be untested: no foreign key exists yet, so a
+    `World` that stopped creating its user would break nothing until `T-136b` — which is exactly
+    the kind of gap that makes a later migration fail on somebody else's branch.
+    """
+    # `World` records audit events, and every consequential action needs a correlation id (§17.5).
+    # Bound here rather than module-wide: the rest of this file is about the seeder, which the CLI
+    # calls with its own.
+    with structlog.contextvars.bound_contextvars(correlation_id="corr-fixture-factory-test"):
+        world = World(db_session)
+        approver = world.approval().approver_id
+
+    written = set(db_session.execute(select(CampaignPolicyVersion.approved_by)).scalars().all()) | {
+        approver
+    }
+    known = set(db_session.execute(select(User.email)).scalars().all())
+
+    assert written, "the factory recorded no approver at all, so this proves nothing"
+    assert not (written - known), f"approver values with no user row: {sorted(written - known)}"
+
+
+def test_the_seeded_approver_is_unmistakably_synthetic(db_session: Session) -> None:
+    """Criterion 3. AGENTS.md rule 1: an IANA-reserved domain that can never be delivered to."""
+    seed_synthetic(db_session, settings=TEST_SETTINGS)
+    user = seed_approver(db_session)
+
+    assert user is not None
+    assert user.email.endswith("@example.invalid")
+    assert "synthetic" in user.email.lower()
+    assert user.display_name.startswith(SYNTHETIC_PREFIX)
+
+
 def test_seeding_twice_changes_nothing(db_session: Session) -> None:
     """Idempotence is not free here: `publish_claim_set` supersedes-and-adds by design."""
     seed_synthetic(db_session, settings=TEST_SETTINGS)
@@ -318,6 +404,8 @@ def test_the_document_describes_the_endpoints_that_exist() -> None:
     assert sorted(committed["paths"]) == [
         "/api/auth/session",
         "/api/auth/stub-sign-in",
+        "/api/operations/flags/{key}",
+        "/api/operations/overview",
         "/api/review/approvals/{approval_id}/revoke",
         "/api/review/attention/approvals",
         "/api/review/candidates",

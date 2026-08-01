@@ -117,8 +117,12 @@ class CampaignPolicyVersion(Base, TimestampMixin):
     #: model, never as loose JSON.
     policy: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
-    #: Held as an identity string until T-012's user table exists; T-136 converts it.
-    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: A foreign key to `app_user.email` with `RESTRICT` (`T-136b`, ADR-024).
+    approved_by: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("app_user.email", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    )
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     #: Set when a later version takes over. The current version is the one with no successor.

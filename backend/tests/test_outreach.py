@@ -44,7 +44,7 @@ from app.outreach_and_replies.models import (
 )
 from app.products_and_claims.models import Product
 from app.prospects.models import Account, Contact, ContactPoint, ContactPointType
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 
@@ -106,7 +106,7 @@ class World:
         approval = request_approval(
             session,
             revision=self.revision,
-            approver_id="approver-1",
+            approver_id=APPROVER,
             actor=OPERATOR,
             now=NOW,
         )

@@ -270,3 +270,47 @@ def cancel(session: Session, job: Job, *, actor: Actor, reason: str) -> Job:
 
 def get_job(session: Session, job_id: uuid.UUID) -> Job | None:
     return session.get(Job, job_id)
+
+
+# --- operational counters (T-069a; §17.5) --------------------------------------------------------
+#
+# Here rather than in the operations endpoint because `tests/test_invariants.py` refuses any other
+# package to name `JobState`: the state vocabulary belongs to the lifecycle's owner, and a counter
+# that spelled it elsewhere would be a second place to update when a state is added.
+
+
+def job_counts_by_state(session: Session) -> dict[str, int]:
+    """How many jobs sit in each state (§17.5 "queue depth")."""
+    return {
+        state.value: count
+        for state, count in session.execute(
+            select(Job.state, func.count()).group_by(Job.state)
+        ).all()
+    }
+
+
+def oldest_runnable_job_at(session: Session) -> datetime | None:
+    """When the longest-waiting runnable job was created, or `None` if nothing is waiting."""
+    return session.execute(
+        select(func.min(Job.created_at)).where(Job.state.in_([JobState.QUEUED, JobState.RETRY]))
+    ).scalar_one_or_none()
+
+
+def dead_jobs(session: Session, *, limit: int) -> list[Job]:
+    """The most recently dead jobs. Each carries a reason — `dead_job_must_carry_a_reason`."""
+    return list(
+        session.execute(
+            select(Job)
+            .where(Job.state == JobState.DEAD)
+            .order_by(Job.updated_at.desc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def dead_job_count(session: Session) -> int:
+    return session.execute(
+        select(func.count()).select_from(Job).where(Job.state == JobState.DEAD)
+    ).scalar_one()

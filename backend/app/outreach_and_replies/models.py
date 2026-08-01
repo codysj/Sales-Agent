@@ -147,7 +147,8 @@ class SendCommand(Base, TimestampMixin):
         ForeignKey("outreach_thread.id", ondelete="RESTRICT"), nullable=False
     )
 
-    #: Who caused the action to exist. Identity string until T-012; T-136 converts it.
+    #: Who caused the action to exist — an `Actor` id, not a user (ADR-025). `T-136` closed
+    #: without converting this one: the dispatcher orders a send as legitimately as a person.
     actor_id: Mapped[str] = mapped_column(String(255), nullable=False)
 
     campaign_id: Mapped[uuid.UUID] = mapped_column(

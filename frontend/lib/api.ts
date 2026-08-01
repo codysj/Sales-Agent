@@ -268,6 +268,176 @@ export async function approveCandidate(
   return (await response.json()) as ApproveResponse;
 }
 
+/** The candidate review queue (`T-063a`) and the revision review queue (`T-063b`). */
+export type CandidatePage =
+  paths["/api/review/candidates"]["get"]["responses"][200]["content"]["application/json"];
+
+export type CandidateQueueRow = CandidatePage["rows"][number];
+
+export type RevisionPage =
+  paths["/api/review/revisions"]["get"]["responses"][200]["content"]["application/json"];
+
+export type RevisionQueueRow = RevisionPage["rows"][number];
+
+/**
+ * Candidates waiting on a person, oldest first.
+ *
+ * No `state` parameter, and that is the endpoint's decision rather than an omission: without one
+ * it filters to `review_pending`, because "the queue" means what is *waiting*. Passing the state
+ * explicitly here would duplicate that decision in a second place, and the copy that drifts is
+ * the one further from the query.
+ */
+export async function listCandidateQueue(
+  token: string,
+  signal?: AbortSignal,
+): Promise<CandidatePage> {
+  const response = await fetch(new URL("/api/review/candidates", apiBaseUrl), {
+    ...(signal ? { signal } : {}),
+    headers: { accept: "application/json", authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw await refusal(response, "GET /api/review/candidates");
+  }
+  return (await response.json()) as CandidatePage;
+}
+
+/** Revisions waiting on a person, longest-waiting first, each with its backlog age (§17.5). */
+export async function listRevisionQueue(
+  token: string,
+  signal?: AbortSignal,
+): Promise<RevisionPage> {
+  const response = await fetch(new URL("/api/review/revisions", apiBaseUrl), {
+    ...(signal ? { signal } : {}),
+    headers: { accept: "application/json", authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw await refusal(response, "GET /api/review/revisions");
+  }
+  return (await response.json()) as RevisionPage;
+}
+
+/** §17.5's operational dashboard, as `T-069a` serves it. */
+export type OperationsOverview =
+  paths["/api/operations/overview"]["get"]["responses"][200]["content"]["application/json"];
+
+export type DeadJobRow = OperationsOverview["dead_job_sample"][number];
+
+/** The switches `T-069b` exposes. Taken from the generated path so it cannot drift from the API. */
+export type FlagKey =
+  paths["/api/operations/flags/{key}"]["post"]["parameters"]["path"]["key"];
+
+export type FlagChangeRequest =
+  paths["/api/operations/flags/{key}"]["post"]["requestBody"]["content"]["application/json"];
+
+export type FlagChangeResponse =
+  paths["/api/operations/flags/{key}"]["post"]["responses"][200]["content"]["application/json"];
+
+/** What the system is doing right now. Administrator only — a `403` here is not a sign-in problem. */
+export async function getOperationsOverview(
+  token: string,
+  signal?: AbortSignal,
+): Promise<OperationsOverview> {
+  const response = await fetch(new URL("/api/operations/overview", apiBaseUrl), {
+    ...(signal ? { signal } : {}),
+    headers: { accept: "application/json", authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw await refusal(response, "GET /api/operations/overview");
+  }
+  return (await response.json()) as OperationsOverview;
+}
+
+/**
+ * Throw or release one §17.6 switch.
+ *
+ * The reason is part of the request type because the backend requires one in *both* directions:
+ * releasing a pause is the more consequential half and is exactly what an incident review asks
+ * about.
+ */
+export async function setOperationalFlag(
+  key: FlagKey,
+  request: FlagChangeRequest,
+  token: string,
+  signal?: AbortSignal,
+): Promise<FlagChangeResponse> {
+  const response = await fetch(new URL(`/api/operations/flags/${key}`, apiBaseUrl), {
+    method: "POST",
+    ...(signal ? { signal } : {}),
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw await refusal(response, `POST /api/operations/flags/${key}`);
+  }
+  return (await response.json()) as FlagChangeResponse;
+}
+
+/** §7.5's flag: approvals that no longer authorize a send (`T-068a`). */
+export type AttentionPage =
+  paths["/api/review/attention/approvals"]["get"]["responses"][200]["content"]["application/json"];
+
+export type AttentionRow = AttentionPage["items"][number];
+
+/**
+ * Every approval that has gone stale, oldest first.
+ *
+ * No campaign filter is passed. The endpoint accepts one, and nothing in the dashboard has a
+ * campaign to filter by yet — a parameter here would be a parameter with no caller, and the list
+ * a reviewer needs is "what needs attention", not "what needs attention in one campaign".
+ */
+export async function listStaleApprovals(
+  token: string,
+  signal?: AbortSignal,
+): Promise<AttentionRow[]> {
+  const response = await fetch(new URL("/api/review/attention/approvals", apiBaseUrl), {
+    ...(signal ? { signal } : {}),
+    headers: { accept: "application/json", authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw await refusal(response, "GET /api/review/attention/approvals");
+  }
+  return ((await response.json()) as AttentionPage).items;
+}
+
+export type RevokeApprovalRequest =
+  paths["/api/review/approvals/{approval_id}/revoke"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RevokeApprovalResponse =
+  paths["/api/review/approvals/{approval_id}/revoke"]["post"]["responses"][200]["content"]["application/json"];
+
+/**
+ * Withdraw an approval so it can never dispatch (§8.2's `approved -> revoked`, §17.6).
+ *
+ * The reason is part of the request type rather than optional here, because the backend requires
+ * one: §17.6 wants operational actions explicable, and a revocation nobody can explain later is
+ * indistinguishable from a fault.
+ */
+export async function revokeApproval(
+  approvalId: string,
+  request: RevokeApprovalRequest,
+  token: string,
+  signal?: AbortSignal,
+): Promise<RevokeApprovalResponse> {
+  const response = await fetch(new URL(`/api/review/approvals/${approvalId}/revoke`, apiBaseUrl), {
+    method: "POST",
+    ...(signal ? { signal } : {}),
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw await refusal(response, `POST /api/review/approvals/${approvalId}/revoke`);
+  }
+  return (await response.json()) as RevokeApprovalResponse;
+}
+
 /** §10.6's eleven categories, as the backend defines them (`T-066a`). */
 export type DecisionCategory =
   paths["/api/review/candidates/{candidate_id}/reject"]["post"]["requestBody"]["content"]["application/json"]["category"];

@@ -105,6 +105,9 @@ class OperationalFlag(Base, TimestampMixin):
 
     #: Who last changed it, denormalized from the audit trail so an operator reading the flag list
     #: does not have to join to find out.
+    #:
+    #: An `Actor` id, not a user (ADR-025): the system reconciles a flag too, and a nullable
+    #: foreign key would be satisfied by `NULL` — which is the case worth catching.
     set_by: Mapped[str] = mapped_column(String(255), nullable=False)
     set_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

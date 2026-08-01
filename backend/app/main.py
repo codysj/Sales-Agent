@@ -26,6 +26,7 @@ from app.drafts_and_approvals.api import router as review_router
 from app.identity.api import router as auth_router
 from app.job_types import register_job_types
 from app.outreach_and_replies.api import router as outreach_router
+from app.outreach_and_replies.operations_api import router as operations_router
 
 log = structlog.get_logger(__name__)
 
@@ -84,6 +85,7 @@ def create_app(*, configure_logs: bool = True) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(review_router)
     app.include_router(outreach_router)
+    app.include_router(operations_router)
 
     @app.get("/healthz", response_model=Liveness, tags=["operations"])
     def healthz() -> Liveness:

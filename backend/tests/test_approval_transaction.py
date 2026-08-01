@@ -61,7 +61,7 @@ from app.prospects.models import (
     VerificationState,
 )
 from app.prospects.suppression import Suppression, SuppressionScope, SuppressionSource
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 from tests.test_revision_validation import World as ValidWorld
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
@@ -95,6 +95,10 @@ class World(ValidWorld):
         revisions.transition(
             session, self.revision, MessageRevisionState.REVIEW_PENDING, actor=OPERATOR
         )
+        # `T-157`: an approval pins the claim set it was granted against, so a campaign without
+        # one cannot be approved into at all. Published here rather than in the base world
+        # because `T-055`'s suite is about individual claims.
+        self.claim_set = self.publish_current_claim_set()
 
 
 @pytest.fixture
@@ -120,7 +124,7 @@ def approve(world: World, **kwargs: object) -> object:
         world.session,
         world.revision,
         recipient=world.recipient,
-        approver_id="approver-1",
+        approver_id=APPROVER,
         actor=OPERATOR,
         **kwargs,  # type: ignore[arg-type]
     )
@@ -265,7 +269,7 @@ def test_a_recipient_the_revision_was_not_written_to_is_refused(
             db_session,
             world.revision,
             recipient=other,
-            approver_id="approver-1",
+            approver_id=APPROVER,
             actor=OPERATOR,
         )
 
@@ -499,7 +503,7 @@ def test_record_versions_are_carried_when_given(db_session: Session, world: Worl
         db_session,
         world.revision,
         recipient=world.recipient,
-        approver_id="approver-1",
+        approver_id=APPROVER,
         actor=OPERATOR,
         record_versions=versions,
     )
@@ -721,7 +725,11 @@ def test_a_cookie_cannot_authenticate_an_approval(
 
     response = client.post(approve_url(world), json=payload(world), headers={})
 
-    assert response.status_code == 401
+    # `403`, not `401`, since `T-070a`: the caller *is* authenticated, and the missing thing
+    # is the CSRF token. Telling them to sign in again would send them round a loop that
+    # cannot fix it. The property this test protects is unchanged — a cookie alone still
+    # cannot mutate anything.
+    assert response.status_code == 403
     assert counts(db_session) == (0, 0, 0)
 
 
@@ -820,3 +828,104 @@ def test_a_second_approval_is_refused(
 
     assert again.status_code == 409
     assert counts(db_session) == (1, 1, 1)
+
+
+# --- T-157: the approval pins the versions §11.4 requires -----------------------------------------
+#
+# The defect was silent by construction. `invalidation_detail` checks the pinned product status and
+# the pinned claim set only `if ... is not None`, and nothing on the production path ever set
+# either — so the two §8.4 triggers passed vacuously on every approval a reviewer ever granted.
+# `T-068a`'s suite missed it because it built approvals through `request_approval` directly, with
+# the pins supplied by hand: the tests reached the triggers by constructing exactly the row the
+# production path could not produce.
+#
+# These tests therefore all start at the endpoint. A pin asserted on an approval the test built
+# itself proves nothing about the transaction that a reviewer actually drives.
+
+
+def approve_via_endpoint(
+    client: TestClient, world: World, headers: dict[str, str]
+) -> dict[str, object]:
+    response = client.post(approve_url(world), json=payload(world), headers=headers)
+    assert response.status_code == 200, response.text
+    body: dict[str, object] = response.json()
+    return body
+
+
+def test_an_approval_from_the_endpoint_pins_both_versions(
+    client: TestClient, db_session: Session, world: World, approver_headers: dict[str, str]
+) -> None:
+    """Criterion 1. Both pins non-null, and each the row that was actually in force."""
+    approve_via_endpoint(client, world, approver_headers)
+
+    approval = db_session.execute(select(Approval)).scalars().one()
+    assert approval.product_status_version_id == world.status.id
+    assert approval.approved_claim_set_id == world.claim_set.id
+
+
+def test_the_send_command_carries_both_versions(
+    client: TestClient, db_session: Session, world: World, approver_headers: dict[str, str]
+) -> None:
+    """Criterion 3. §11.4 lists both on every external action, and the command is the action."""
+    approve_via_endpoint(client, world, approver_headers)
+
+    command = db_session.execute(select(SendCommand)).scalars().one()
+    assert command.product_status_version_id == world.status.id
+    assert command.approved_claim_set_id == world.claim_set.id
+
+
+def test_superseding_the_pinned_claim_set_invalidates_the_approval(
+    client: TestClient, db_session: Session, world: World, approver_headers: dict[str, str]
+) -> None:
+    """Criterion 2, and the §8.4 trigger that could never fire before.
+
+    End to end from the endpoint on both sides: the approval is granted through `/approve` and the
+    staleness is read back through `/attention/approvals`, which is what a reviewer sees. Nothing
+    here constructs an approval or calls `invalidation_detail` directly.
+    """
+    approval_id = approve_via_endpoint(client, world, approver_headers)["approval_id"]
+
+    world.publish_current_claim_set()  # supersedes the pinned set, publishing v2
+    db_session.commit()
+
+    rows = client.get("/api/review/attention/approvals", headers=approver_headers).json()["items"]
+
+    assert [row["approval_id"] for row in rows] == [approval_id]
+    assert rows[0]["trigger"] == "claim_set_superseded"
+    assert rows[0]["triggering_id"] == str(world.claim_set.id)
+
+
+def test_expiring_the_pinned_product_status_invalidates_the_approval(
+    client: TestClient, db_session: Session, world: World, approver_headers: dict[str, str]
+) -> None:
+    """The other §8.4 trigger, equally dead before this task: a readiness version that stopped
+    being effective while an approval still pointed at it."""
+    approval_id = approve_via_endpoint(client, world, approver_headers)["approval_id"]
+
+    # `NOW` rather than an offset: the fixture clock is in the past, so this readiness has lapsed
+    # by the time the attention endpoint reads it, and it still sits after `effective_from` —
+    # `ck_product_status_version_effective_window_ordered` refuses a window that closes first.
+    world.status.expires_or_review_by = NOW
+    db_session.commit()
+
+    rows = client.get("/api/review/attention/approvals", headers=approver_headers).json()["items"]
+
+    assert [row["approval_id"] for row in rows] == [approval_id]
+    assert rows[0]["trigger"] == "product_status_superseded"
+    assert rows[0]["triggering_id"] == str(world.status.id)
+
+
+def test_a_campaign_with_no_current_claim_set_cannot_be_approved_into(
+    client: TestClient, db_session: Session, world: World, approver_headers: dict[str, str]
+) -> None:
+    """Fails closed rather than pinning null. An approval with no claim set pinned is exactly the
+    approval §8.4 can never invalidate, so the transaction refuses to create one — and refusing
+    writes nothing, the same as every other step-1 refusal above."""
+    world.claim_set.superseded_at = NOW - timedelta(hours=1)
+    db_session.flush()
+
+    response = client.post(approve_url(world), json=payload(world), headers=approver_headers)
+
+    assert response.status_code == 409
+    assert "claim set" in response.json()["detail"]
+    assert counts(db_session) == (0, 0, 0)

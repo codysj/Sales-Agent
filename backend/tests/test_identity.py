@@ -352,9 +352,14 @@ def test_no_identity_table_has_a_password_column(db_session: Session) -> None:
 def test_a_service_identity_is_not_a_user(db_session: Session) -> None:
     """Separate tables rather than a flag: a query that forgot to filter would return the wrong
     kind of principal, and here the type is simply wrong instead."""
+    # A delta, not an absolute count: `T-136b` made the approver columns foreign keys, so the
+    # `db_session` fixture now seeds the approver identities the suite names. What this test means
+    # is "creating a service creates no user", and the delta says exactly that.
+    before = db_session.execute(select(func.count()).select_from(User)).scalar_one()
+
     make_service(db_session)
 
-    assert db_session.execute(select(func.count()).select_from(User)).scalar_one() == 0
+    assert db_session.execute(select(func.count()).select_from(User)).scalar_one() == before
     assert not hasattr(ServiceIdentity, "roles"), (
         "a service's roles go through ServiceIdentityRole, which the database constrains"
     )
@@ -368,7 +373,12 @@ def test_a_user_is_deactivated_rather_than_deleted(db_session: Session) -> None:
     user.active = False
     db_session.flush()
 
-    assert db_session.execute(select(func.count()).select_from(User)).scalar_one() == 1
+    assert (
+        db_session.execute(
+            select(func.count()).select_from(User).where(User.id == user.id)
+        ).scalar_one()
+        == 1
+    )
 
 
 def test_an_email_must_be_stored_lowercase(db_session: Session) -> None:

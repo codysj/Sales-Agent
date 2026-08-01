@@ -30,7 +30,7 @@ from app.drafts_and_approvals.approval import (
     revoke,
 )
 from app.drafts_and_approvals.models import MessageRevision
-from app.identity.dependencies import db_session, requires, requires_bearer
+from app.identity.dependencies import db_session, requires, requires_mutation
 from app.identity.rbac import Permission
 from app.identity.sessions import Principal
 from app.outreach_and_replies.approve_message import ApprovalTransactionRefused, approve_message
@@ -47,11 +47,11 @@ router = APIRouter(prefix="/api/review", tags=["review"])
 # Each of those maps to something already built, which is the point — step 1 is not new machinery,
 # it is the machinery being *applied* to the one action §3.5 cares most about:
 #
-# * **identity, role, session** — `requires_bearer(Permission.APPROVE_MESSAGE)`. Tier 4 (§7.4): the
-#   approval that lets an external effect happen at all, and a different permission from the tier-3
-#   corrections, so a role that may tidy the queue cannot authorize outreach.
-# * **CSRF** — the same refusal of cookie-only authentication every mutation here uses. `T-070`
-#   replaces it with real protection; until then the exposure is removed rather than accepted.
+# * **identity, role, session** — `requires_mutation(Permission.APPROVE_MESSAGE)`. Tier 4 (§7.4):
+#   the approval that lets an external effect happen at all, and a different permission from the
+#   tier-3 corrections, so a role that may tidy the queue cannot authorize outreach.
+# * **CSRF** — `T-070a`'s protection, which every mutation here shares: a bearer token needs
+#   nothing further, and a cookie-authenticated request must echo the CSRF token in a header.
 # * **record versions** — the revision's `updated_at`, sent back by the client. §11.4 lists
 #   `record_versions` on every consequential action, and `T-067a` carries whatever it is given.
 # * **approval scope** — `require_approvable_candidate`: the revision's candidate must not already
@@ -110,7 +110,7 @@ def approve_message_endpoint(
     revision_id: uuid.UUID,
     request: ApproveMessageRequest,
     session: Annotated[Session, Depends(db_session)],
-    principal: Annotated[Principal, Depends(requires_bearer(Permission.APPROVE_MESSAGE))],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.APPROVE_MESSAGE))],
 ) -> ApproveMessageResponse:
     """§11.3 step 1, then the transaction.
 
@@ -218,7 +218,7 @@ def approvals_needing_attention_endpoint(
     principal: Annotated[Principal, Depends(requires(Permission.VIEW_REVIEW_QUEUE))],
     campaign_id: uuid.UUID | None = None,
 ) -> AttentionPage:
-    """§7.5's flag. A read, so `requires` rather than `requires_bearer`.
+    """§7.5's flag. A read, so `requires` rather than `requires_mutation`.
 
     Only approvals still in `approved` are scanned: one already revoked or rejected is not an
     attention item — somebody dealt with it — and listing them would bury the ones nobody has
@@ -271,7 +271,7 @@ def revoke_approval_endpoint(
     approval_id: uuid.UUID,
     request: RevokeApprovalRequest,
     session: Annotated[Session, Depends(db_session)],
-    principal: Annotated[Principal, Depends(requires_bearer(Permission.APPROVE_MESSAGE))],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.APPROVE_MESSAGE))],
 ) -> RevokeApprovalResponse:
     """Withdraw an approval (§8.2's `approved -> revoked`, §17.6).
 
@@ -299,9 +299,11 @@ def revoke_approval_endpoint(
     try:
         revoke(session, approval, actor=principal.actor, reason=request.reason)
     except (ApprovalError, LifecycleError) as refusal:
-        # `LifecycleError` too: §8.2 makes `revoked` terminal, so revoking twice is an illegal
-        # transition rather than an approval-domain refusal — and a reviewer double-clicking
-        # deserves a `409` saying so, not a `500`.
+        # Revoking twice is an `ApprovalAlreadyClosed` since `T-137` — a domain refusal naming
+        # which terminal state it is already in. `LifecycleError` is still caught because the
+        # lifecycle table refuses edges this endpoint cannot pre-empt: §8.2 has no
+        # `pending -> revoked`, so revoking something never approved arrives as
+        # `IllegalTransition`, and a reviewer deserves a `409` saying so rather than a `500`.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(refusal)) from refusal
 
     session.commit()

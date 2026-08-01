@@ -22,6 +22,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings
+
+# Private on purpose — it is the outbox guard's own bookkeeping. A fixture that writes rows before
+# the test starts is the one caller with a legitimate reason to reset it; see `db_session`.
+from app.jobs_and_outbox.outbox import _WRITTEN_KINDS as WRITTEN_KINDS
+from tests.factories import create_well_known_approvers
 from tests.netguard import guarded, permitted_addresses
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -125,6 +130,17 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
     transaction = connection.begin()
     session = sessionmaker(bind=connection, expire_on_commit=False)()
     try:
+        # `T-136b` made the approver columns foreign keys, so the identities the suite names have
+        # to exist before a test writes one. Created here rather than at fifty-six call sites: the
+        # rollback below takes them with it, and a test that never touches PostgreSQL never gets
+        # here at all.
+        create_well_known_approvers(session)
+        # …and then forget it happened. `commit_with_outbox` refuses an outbox event that commits
+        # with no business state change (§17.2), and it decides that from what the *transaction*
+        # has written. Seeding users is fixture setup, not the decision an outbox event is paired
+        # with — leaving it counted would have made that guard pass for every test in the suite,
+        # which two tests in `test_outbox.py` caught immediately.
+        session.info.pop(WRITTEN_KINDS, None)
         yield session
     finally:
         session.close()

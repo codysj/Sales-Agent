@@ -33,7 +33,11 @@ from app.jobs_and_outbox.dispatch import (
     dispatch_once,
     lease_outbox_events,
 )
-from app.jobs_and_outbox.outbox import OutboxState, enqueue_outbox_event
+from app.jobs_and_outbox.outbox import (
+    OutboxState,
+    enqueue_outbox_event,
+    refused_by_check_count,
+)
 from app.outreach_and_replies.adapters.fake import FakeExternalEffectAdapter
 from app.outreach_and_replies.commands import create_send_command
 from app.outreach_and_replies.models import SendAttempt, SendCommand
@@ -663,6 +667,176 @@ def test_a_refusal_writes_an_audit_event_naming_the_check(
         )
     ).scalar_one()
     assert audit.payload["refused_check"] == Recheck.CAMPAIGN_STATUS.value
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        SuppressionScope.PERSON,
+        SuppressionScope.EMAIL,
+        SuppressionScope.DOMAIN,
+        SuppressionScope.ACCOUNT,
+    ],
+    ids=lambda s: s.value,
+)
+def test_a_suppressed_send_records_the_scope_that_matched(
+    db_session: Session, world: World, scope: SuppressionScope
+) -> None:
+    """`T-161` criterion 1. Refusing was never in doubt; leaving a countable trace was.
+
+    Before this the trail said only `refused_check: suppression`, and the scope lived in a
+    sentence inside `last_detail` — greppable, not countable, and overwritten by the next attempt.
+    """
+    command = a_command(db_session, world)
+    outbox_for(db_session, command)
+    record_suppression(
+        db_session,
+        scope=scope,
+        identity={
+            SuppressionScope.PERSON: str(world.contact.id),
+            SuppressionScope.EMAIL: world.recipient.value,
+            SuppressionScope.DOMAIN: world.email_domain,
+            SuppressionScope.ACCOUNT: str(world.account.id),
+        }[scope],
+        source=SuppressionSource.MANUAL,
+        reason="synthetic opt-out",
+        effective_at=NOW - timedelta(days=1),
+    )
+    db_session.flush()
+    event = lease_outbox_events(db_session, dispatcher_id="d1", limit=1)[0]
+
+    with pytest.raises(DispatchRefused):
+        dispatch_event(
+            db_session,
+            event,
+            FakeExternalEffectAdapter(),
+            unlocked_settings(),
+            precondition_check=send_precondition_check,
+        )
+    db_session.flush()
+
+    audit = db_session.execute(
+        select(AuditEvent).where(
+            AuditEvent.entity_id == str(event.id),
+            AuditEvent.action == "outbox.recheck_refused",
+        )
+    ).scalar_one()
+    assert audit.payload["refused_check"] == Recheck.SUPPRESSION.value
+    assert audit.payload["refused_scope"] == scope.value
+
+
+def test_a_suppressed_send_becomes_a_countable_attempt(db_session: Session, world: World) -> None:
+    """`T-161` criterion 2, from the writing end: the count the dashboard reads moves.
+
+    One real dispatch, end to end. That two *attempts* count two rather than one recipient is
+    proven where rows are cheap — `tests/test_operations_api.py::test_suppressed_send_attempts
+    _counts_attempts_not_recipients` — because a second command here would need a second revision:
+    `uq_approval_live_per_revision` allows one live approval per revision, and building a whole
+    second world to re-prove the counter's arithmetic would test the fixtures, not the count.
+    """
+    assert refused_by_check_count(db_session, Recheck.SUPPRESSION.value) == 0
+
+    command = a_command(db_session, world)
+    outbox_for(db_session, command)
+    record_suppression(
+        db_session,
+        scope=SuppressionScope.EMAIL,
+        identity=world.recipient.value,
+        source=SuppressionSource.MANUAL,
+        reason="synthetic opt-out",
+        effective_at=NOW - timedelta(days=1),
+    )
+    db_session.flush()
+    event = lease_outbox_events(db_session, dispatcher_id="d1", limit=1)[0]
+    with pytest.raises(DispatchRefused):
+        dispatch_event(
+            db_session,
+            event,
+            FakeExternalEffectAdapter(),
+            unlocked_settings(),
+            precondition_check=send_precondition_check,
+        )
+    db_session.flush()
+
+    assert refused_by_check_count(db_session, Recheck.SUPPRESSION.value) == 1
+    # A refusal by another check is not a suppressed send; counting it would report an outage as
+    # a compliance signal.
+    assert refused_by_check_count(db_session, Recheck.CAMPAIGN_STATUS.value) == 0
+
+
+def test_the_recorded_scope_carries_no_address_and_no_identifier(
+    db_session: Session, world: World
+) -> None:
+    """§15.5. The scope is a category; the identity that matched must not travel with it.
+
+    A trail that named the address would put a person's email in a table an operator reads over
+    somebody's shoulder during an incident — and the category is the operationally useful half
+    anyway: a run of `domain` matches is a different incident from a run of `person` ones.
+    """
+    command = a_command(db_session, world)
+    outbox_for(db_session, command)
+    record_suppression(
+        db_session,
+        scope=SuppressionScope.EMAIL,
+        identity=world.recipient.value,
+        source=SuppressionSource.MANUAL,
+        reason="synthetic opt-out",
+        effective_at=NOW - timedelta(days=1),
+    )
+    db_session.flush()
+    event = lease_outbox_events(db_session, dispatcher_id="d1", limit=1)[0]
+
+    with pytest.raises(DispatchRefused):
+        dispatch_event(
+            db_session,
+            event,
+            FakeExternalEffectAdapter(),
+            unlocked_settings(),
+            precondition_check=send_precondition_check,
+        )
+    db_session.flush()
+
+    audit = db_session.execute(
+        select(AuditEvent).where(
+            AuditEvent.entity_id == str(event.id),
+            AuditEvent.action == "outbox.recheck_refused",
+        )
+    ).scalar_one()
+    rendered = str(audit.payload)
+    assert world.recipient.value not in rendered
+    assert str(world.contact.id) not in rendered
+    assert world.email_domain not in rendered
+
+
+def test_a_refusal_with_no_scope_records_none(db_session: Session, world: World) -> None:
+    """Only suppression has a scope. A paused campaign must not invent an empty one.
+
+    The count reads `refused_check`, so a stray `refused_scope: ""` on every other refusal would
+    not corrupt it — but it would make the payload lie about what was known.
+    """
+    command = a_command(db_session, world)
+    outbox_for(db_session, command)
+    world.campaign.paused = True
+    db_session.flush()
+    event = lease_outbox_events(db_session, dispatcher_id="d1", limit=1)[0]
+
+    with pytest.raises(DispatchRefused):
+        dispatch_event(
+            db_session,
+            event,
+            FakeExternalEffectAdapter(),
+            unlocked_settings(),
+            precondition_check=send_precondition_check,
+        )
+    db_session.flush()
+
+    audit = db_session.execute(
+        select(AuditEvent).where(
+            AuditEvent.entity_id == str(event.id),
+            AuditEvent.action == "outbox.recheck_refused",
+        )
+    ).scalar_one()
+    assert "refused_scope" not in audit.payload
 
 
 def test_a_recoverable_refusal_holds_the_work_without_spending_the_budget(

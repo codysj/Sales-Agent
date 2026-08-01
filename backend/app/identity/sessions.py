@@ -93,6 +93,8 @@ class UserSession(Base, TimestampMixin):
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: An `Actor` id, not a user (ADR-025): a session is revoked by its own user, by an
+    #: administrator, or by the system expiring it. `NULL` means it was never revoked.
     revoked_by: Mapped[str | None] = mapped_column(String(255))
     #: How this session came to exist — `stub` today, a provider name once `T-061b` lands. Kept
     #: so an auditor can tell a development session from a real one without reading dates.
@@ -133,7 +135,14 @@ class Principal:
 
     @property
     def actor(self) -> Actor:
-        """The audit actor for anything this principal does (§12.2)."""
+        """The audit actor for anything this principal does (§12.2).
+
+        **The id is the user's UUID, never their email** (ADR-026). This value flows into the
+        audit trail and is the one most likely to end up in a log line; §15.5 asks for contacts to
+        be redacted from logs, and that only holds while the actor id is opaque. The email is the
+        *approver* vocabulary — `approval.approver_id` and the four `approved_by` columns, keyed to
+        `app_user.email` by ADR-024 — and the two must not be swapped.
+        """
         return Actor(type=ActorType.HUMAN, id=str(self.user.id))
 
 

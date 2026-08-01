@@ -586,6 +586,41 @@
         "title": "ContactPointType",
         "type": "string"
       },
+      "DeadJob": {
+        "description": "One job that will not be retried, and why (\u00a717.1).",
+        "properties": {
+          "attempt_count": {
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_type": {
+            "title": "Job Type",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "requires_human_review": {
+            "title": "Requires Human Review",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "job_id",
+          "job_type",
+          "reason",
+          "attempt_count",
+          "requires_human_review"
+        ],
+        "title": "DeadJob",
+        "type": "object"
+      },
       "DecisionCategory": {
         "description": "\u00a710.6's eleven categories, in the specification's order.\n\nThe order is kept so the list can be checked against \u00a710.6 by reading down it. The values are\nstable identifiers: a dashboard may relabel them, but a stored row means what it meant.",
         "enum": [
@@ -915,6 +950,85 @@
         "title": "EvidenceRow",
         "type": "object"
       },
+      "FlagChangeRequest": {
+        "additionalProperties": false,
+        "description": "Throw or release one switch, and say why.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "reason"
+        ],
+        "title": "FlagChangeRequest",
+        "type": "object"
+      },
+      "FlagChangeResponse": {
+        "description": "What the switch now says.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "set_at": {
+            "format": "date-time",
+            "title": "Set At",
+            "type": "string"
+          },
+          "set_by": {
+            "title": "Set By",
+            "type": "string"
+          },
+          "shadow_mode": {
+            "title": "Shadow Mode",
+            "type": "boolean"
+          },
+          "what_happens_next": {
+            "title": "What Happens Next",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "enabled",
+          "reason",
+          "set_by",
+          "set_at",
+          "shadow_mode",
+          "what_happens_next"
+        ],
+        "title": "FlagChangeResponse",
+        "type": "object"
+      },
+      "FlagKey": {
+        "description": "The database-backed subset of \u00a717.6.",
+        "enum": [
+          "global_pause",
+          "shadow_mode",
+          "outbound_email_disabled",
+          "product_disabled",
+          "claim_version_disabled"
+        ],
+        "title": "FlagKey",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -974,6 +1088,123 @@
         ],
         "title": "MessageRevisionState",
         "type": "string"
+      },
+      "OperationsOverview": {
+        "description": "\u00a717.5's dashboard, as far as this repository has data for it.",
+        "properties": {
+          "candidates_awaiting_review": {
+            "title": "Candidates Awaiting Review",
+            "type": "integer"
+          },
+          "claim_invalidations": {
+            "title": "Claim Invalidations",
+            "type": "integer"
+          },
+          "dead_job_sample": {
+            "items": {
+              "$ref": "#/components/schemas/DeadJob"
+            },
+            "title": "Dead Job Sample",
+            "type": "array"
+          },
+          "dead_jobs": {
+            "title": "Dead Jobs",
+            "type": "integer"
+          },
+          "delivery_ambiguous_threads": {
+            "title": "Delivery Ambiguous Threads",
+            "type": "integer"
+          },
+          "flags_in_force": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags In Force",
+            "type": "array"
+          },
+          "jobs_by_state": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Jobs By State",
+            "type": "object"
+          },
+          "not_measured": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Measured",
+            "type": "array"
+          },
+          "oldest_pending_outbox_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Pending Outbox Age Seconds"
+          },
+          "oldest_queued_job_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Queued Job Age Seconds"
+          },
+          "oldest_review_item_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Review Item Age Seconds"
+          },
+          "outbox_pending": {
+            "title": "Outbox Pending",
+            "type": "integer"
+          },
+          "revisions_awaiting_review": {
+            "title": "Revisions Awaiting Review",
+            "type": "integer"
+          },
+          "shadow_mode": {
+            "title": "Shadow Mode",
+            "type": "boolean"
+          },
+          "suppressed_send_attempts": {
+            "title": "Suppressed Send Attempts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shadow_mode",
+          "flags_in_force",
+          "jobs_by_state",
+          "oldest_queued_job_age_seconds",
+          "dead_jobs",
+          "dead_job_sample",
+          "outbox_pending",
+          "oldest_pending_outbox_age_seconds",
+          "delivery_ambiguous_threads",
+          "candidates_awaiting_review",
+          "revisions_awaiting_review",
+          "oldest_review_item_age_seconds",
+          "claim_invalidations",
+          "suppressed_send_attempts",
+          "not_measured"
+        ],
+        "title": "OperationsOverview",
+        "type": "object"
       },
       "Readiness": {
         "properties": {
@@ -1507,7 +1738,7 @@
   "paths": {
     "/api/auth/session": {
       "delete": {
-        "description": "Revoke the caller's own session, and only their own.\n\nA caller with no session gets `204` rather than `401`: signing out when already signed out is\nthe state they asked for, and answering `401` would make a dashboard sign-out button fail for\na reviewer whose session had just expired.",
+        "description": "Revoke the caller's own session, and only their own.\n\nA caller with no session gets `204` rather than `401`: signing out when already signed out is\nthe state they asked for, and answering `401` would make a dashboard sign-out button fail for\na reviewer whose session had just expired.\n\nBoth cookies are cleared **before** the `principal is None` return, so a caller holding a\ncookie the server no longer honours still gets rid of it. Leaving a dead session cookie in the\nbrowser is how a reviewer ends up signed out and unable to sign in again without knowing to\nclear cookies by hand.",
         "operationId": "sign_out_api_auth_session_delete",
         "parameters": [
           {
@@ -1670,6 +1901,172 @@
         ]
       }
     },
+    "/api/operations/flags/{key}": {
+      "post": {
+        "description": "\u00a717.6's global pause, shadow-mode switch, and outbound-email disable.\n\n`PAUSE_SYSTEM` is tier 5 and administrator-only (\u00a77.4): these are the switches that stop the\nsystem, and \u00a712.1 gives them to nobody else. The actor comes from the session, never from the\nrequest (\u00a715.1, `T-070c`), and `set_flag` writes the audit event.\n\n**A scoped key is refused by `set_flag`, not by a check here.** This route first carried its\nown `key in SCOPED_KEYS` guard, and a negative control proved it dead: deleting it changed\nnothing, because `PRODUCT_DISABLED` with no `scope_id` is already a `FlagError` one layer\ndown. A rule enforced twice is a rule that can disagree with itself, and the copy nobody\nexercises is the one that drifts \u2014 the same reasoning that removed the duplicate\nverification check from `approve_message._recheck`.",
+        "operationId": "set_operational_flag_api_operations_flags__key__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/FlagKey"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlagChangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Throw or release a system-wide operational switch (administrator only)",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/operations/overview": {
+      "get": {
+        "description": "Every \u00a717.5 counter this repository has rows for, plus the switches in force.\n\n`principal` is unused in the body and required in the signature: it is what runs the\nauthorization, and naming it keeps that visible at the endpoint rather than hidden in a\ndecorator somebody could remove without the route looking different (`T-063a`'s reasoning).",
+        "operationId": "operations_overview_api_operations_overview_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What the system is doing right now (administrator only)",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
     "/api/review/approvals/{approval_id}/revoke": {
       "post": {
         "description": "Withdraw an approval (\u00a78.2's `approved -> revoked`, \u00a717.6).\n\n**`APPROVE_MESSAGE`, the same permission that granted it.** Withdrawing an authorization is\nthe same authority as giving one \u2014 a role that could revoke but not approve could stop any\noutreach it disliked, and one that could approve but not revoke could not undo its own\nmistake.\n\nA reason is required with no default: \u00a717.6 wants operational actions explicable, and a\nrevocation nobody can explain later is one a reviewer cannot distinguish from a fault.",
@@ -1699,6 +2096,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
             }
           },
           {
@@ -1758,7 +2171,7 @@
     },
     "/api/review/attention/approvals": {
       "get": {
-        "description": "\u00a77.5's flag. A read, so `requires` rather than `requires_bearer`.\n\nOnly approvals still in `approved` are scanned: one already revoked or rejected is not an\nattention item \u2014 somebody dealt with it \u2014 and listing them would bury the ones nobody has\nlooked at.",
+        "description": "\u00a77.5's flag. A read, so `requires` rather than `requires_mutation`.\n\nOnly approvals still in `approved` are scanned: one already revoked or rejected is not an\nattention item \u2014 somebody dealt with it \u2014 and listing them would bury the ones nobody has\nlooked at.",
         "operationId": "approvals_needing_attention_endpoint_api_review_attention_approvals_get",
         "parameters": [
           {
@@ -2069,6 +2482,22 @@
             }
           },
           {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
             "in": "cookie",
             "name": "mp_session",
             "required": false,
@@ -2152,6 +2581,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
             }
           },
           {
@@ -2241,6 +2686,22 @@
             }
           },
           {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
             "in": "cookie",
             "name": "mp_session",
             "required": false,
@@ -2324,6 +2785,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
             }
           },
           {
@@ -2569,6 +3046,22 @@
             }
           },
           {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
             "in": "cookie",
             "name": "mp_session",
             "required": false,
@@ -2625,7 +3118,7 @@
     },
     "/api/review/revisions/{revision_id}/edit": {
       "post": {
-        "description": "\u00a710.5: an edit creates revision N+1 and leaves N exactly as it was.\n\n`requires_bearer`, not `requires`: this is a state-changing route, and a cookie is what a\nCSRF attack rides on. See `identity.dependencies` \u2014 the exposure is removed until `T-070`\nadds real protection, rather than accepted on trust.\n\nThe actor comes from the session (\u00a712.2), never from the request body. Committed here rather\nthan by the caller: the retired approval, the superseded revision, the new one, and its\nvalidation are one decision, and a half-applied edit is the state this must never leave.",
+        "description": "\u00a710.5: an edit creates revision N+1 and leaves N exactly as it was.\n\n`requires_mutation`, not `requires`: this is a state-changing route, and a cookie is what a\nCSRF attack rides on. See `identity.dependencies` \u2014 a bearer token passes, and a cookie passes\nonly with a matching CSRF header (`T-070a`).\n\nThe actor comes from the session (\u00a712.2), never from the request body. Committed here rather\nthan by the caller: the retired approval, the superseded revision, the new one, and its\nvalidation are one decision, and a half-applied edit is the state this must never leave.",
         "operationId": "edit_revision_endpoint_api_review_revisions__revision_id__edit_post",
         "parameters": [
           {
@@ -2652,6 +3145,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
             }
           },
           {

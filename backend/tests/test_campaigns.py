@@ -25,7 +25,7 @@ from app.campaigns.service import (
     require_current_policy,
 )
 from app.products_and_claims.models import Product, ReadinessCategory
-from tests.factories import NOW
+from tests.factories import NOW, OWNER_ONE, OWNER_TWO
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def test_publishing_gives_exactly_one_current_version(
     db_session: Session, campaign: Campaign
 ) -> None:
     publish_policy_version(
-        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by="owner-1"
+        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by=OWNER_ONE
     )
     db_session.flush()
 
@@ -157,7 +157,7 @@ def test_publishing_again_supersedes_the_previous(db_session: Session, campaign:
         db_session,
         campaign_id=campaign.id,
         policy=CampaignPolicy(),
-        approved_by="owner-1",
+        approved_by=OWNER_ONE,
         approved_at=NOW,
     )
     db_session.flush()
@@ -166,7 +166,7 @@ def test_publishing_again_supersedes_the_previous(db_session: Session, campaign:
         db_session,
         campaign_id=campaign.id,
         policy=CampaignPolicy(daily_send_cap=3),
-        approved_by="owner-2",
+        approved_by=OWNER_TWO,
         approved_at=NOW + timedelta(days=1),
     )
     db_session.flush()
@@ -187,7 +187,7 @@ def test_version_numbers_are_unique_per_campaign(db_session: Session, campaign: 
             campaign_id=campaign.id,
             version=1,
             policy=CampaignPolicy().model_dump(mode="json"),
-            approved_by="owner-1",
+            approved_by=OWNER_ONE,
             approved_at=NOW,
         )
     )
@@ -197,7 +197,7 @@ def test_version_numbers_are_unique_per_campaign(db_session: Session, campaign: 
             campaign_id=campaign.id,
             version=1,
             policy=CampaignPolicy().model_dump(mode="json"),
-            approved_by="owner-2",
+            approved_by=OWNER_TWO,
             approved_at=NOW,
         )
     )
@@ -214,7 +214,7 @@ def test_a_published_policy_body_cannot_be_rewritten(
 ) -> None:
     """GP-09: a decision recorded against v2 must still be explainable by reading v2."""
     version = publish_policy_version(
-        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by="owner-1"
+        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by=OWNER_ONE
     )
     db_session.flush()
 
@@ -228,7 +228,7 @@ def test_a_published_policy_body_cannot_be_rewritten(
 
 def test_the_approver_cannot_be_rewritten(db_session: Session, campaign: Campaign) -> None:
     version = publish_policy_version(
-        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by="owner-1"
+        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by=OWNER_ONE
     )
     db_session.flush()
 
@@ -241,7 +241,7 @@ def test_the_approver_cannot_be_rewritten(db_session: Session, campaign: Campaig
 def test_superseding_is_still_allowed(db_session: Session, campaign: Campaign) -> None:
     """Retiring a version is how the next one takes over; it changes no rule."""
     version = publish_policy_version(
-        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by="owner-1"
+        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by=OWNER_ONE
     )
     db_session.flush()
 
@@ -266,7 +266,7 @@ def test_a_stored_policy_round_trips_through_the_model(
         required_readiness=(ReadinessCategory.EVALUATION_OR_PILOT,),
     )
     version = publish_policy_version(
-        db_session, campaign_id=campaign.id, policy=original, approved_by="owner-1"
+        db_session, campaign_id=campaign.id, policy=original, approved_by=OWNER_ONE
     )
     db_session.flush()
     db_session.expire(version)
@@ -281,7 +281,7 @@ def test_a_drifted_policy_body_fails_loudly(db_session: Session, campaign: Campa
             campaign_id=campaign.id,
             version=1,
             policy={"allowed_countries": ["US"], "unexpected_rule": True},
-            approved_by="owner-1",
+            approved_by=OWNER_ONE,
             approved_at=NOW,
         )
     )
@@ -342,7 +342,7 @@ def test_deleting_a_campaign_removes_its_policy_versions(
     db_session: Session, campaign: Campaign
 ) -> None:
     publish_policy_version(
-        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by="owner-1"
+        db_session, campaign_id=campaign.id, policy=CampaignPolicy(), approved_by=OWNER_ONE
     )
     db_session.flush()
 

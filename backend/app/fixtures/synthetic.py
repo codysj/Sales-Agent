@@ -39,6 +39,7 @@ from app.campaigns.models import Campaign, TargetSegment
 from app.campaigns.policy import CampaignPolicy
 from app.campaigns.service import get_current_policy_version, publish_policy_version
 from app.core.settings import AppEnv, Settings, get_settings
+from app.identity.models import User
 from app.products_and_claims.claim_models import ApprovedClaim, ApprovedClaimCampaign
 from app.products_and_claims.claims import (
     claim_is_allowed_for_campaign,
@@ -52,7 +53,17 @@ from app.products_and_claims.status import get_effective_status, next_version_nu
 SYNTHETIC_PREFIX: Final = "SYNTHETIC-"
 
 #: Approver identity, not a person. `Q-005` has not named who may approve claims.
-SEED_APPROVER: Final = "SYNTHETIC-approver"
+#:
+#: An **email**, and an `app_user` row exists for it (`T-136a`). Three vocabularies used to name
+#: one concept — this constant, the test factory's `approver-1`, and `principal.user.email` on the
+#: production path — and none of them resolved to a user. `T-136b` turns these columns into
+#: foreign keys, and a key needs something to point at; the mapping it will use is the email.
+#: `example.invalid` is IANA-reserved and can never be delivered to (AGENTS.md rule 1).
+SEED_APPROVER: Final = "synthetic-approver@example.invalid"
+
+#: Display name for that user. Carries the prefix so a row that reached a real screen is obvious;
+#: the email cannot, because `app_user` requires it lowercase.
+SEED_APPROVER_NAME: Final = f"{SYNTHETIC_PREFIX}approver"
 
 #: Claims must carry a review date (`expires_or_review_by` is NOT NULL, T-014). Six months keeps
 #: a seeded database usable without making a placeholder claim effectively permanent.
@@ -201,6 +212,16 @@ def fixture_strings() -> tuple[str, ...]:
     return tuple(values)
 
 
+def seed_approver(session: Session) -> User | None:
+    """The `app_user` the seeded approvals name, or `None` before the first seed (`T-136a`).
+
+    A function rather than a constant lookup at the call site, because `T-136b` will need exactly
+    this resolution — approver string to user row — in its migration and in every writer, and one
+    definition of "who is `SEED_APPROVER`" is what stops those two disagreeing.
+    """
+    return session.execute(select(User).where(User.email == SEED_APPROVER)).scalar_one_or_none()
+
+
 def require_seedable(settings: Settings) -> None:
     """Raise :class:`SeedRefused` unless this environment may hold synthetic data."""
     if settings.app_env not in SEEDABLE_ENVIRONMENTS:
@@ -250,6 +271,16 @@ def seed_synthetic(
     require_seedable(settings or get_settings())
     moment = at or datetime.now(UTC)
     created: list[str] = []
+
+    # Before anything writes `approved_by`: the approver has to be somebody (`T-136a`). Until now
+    # every seeded approval named a string that resolved to no row at all, which is the reason
+    # `T-136b`'s foreign key could not be added.
+    if seed_approver(session) is None:
+        session.add(
+            User(email=SEED_APPROVER, display_name=SEED_APPROVER_NAME, subject=None, active=True)
+        )
+        session.flush()
+        created.append(f"user {SEED_APPROVER}")
 
     for fixture in CAMPAIGN_FIXTURES:
         product = _get_product(session, fixture.product_slug)

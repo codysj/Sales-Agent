@@ -6,10 +6,10 @@ scope is not consulted, or campaign configuration is allowed to override it.
 """
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,10 +19,12 @@ from app.prospects.suppression import (
     UNLIFTABLE_SOURCES,
     RecipientSuppressed,
     Suppression,
+    SuppressionError,
     SuppressionScope,
     SuppressionSource,
     find_suppression,
     is_suppressed,
+    record_opt_out,
     record_suppression,
     require_not_suppressed,
 )
@@ -352,3 +354,132 @@ def test_blank_reasons_are_rejected(db_session: Session) -> None:
 
     with pytest.raises(IntegrityError):
         db_session.flush()
+
+
+# --- opt-out intake (T-102a; §15.8 "clear opt-out handling and immediate suppression") ------------
+
+
+def _rows_for(db_session: Session, identity: str) -> list[Suppression]:
+    return list(
+        db_session.execute(select(Suppression).where(Suppression.identity == identity))
+        .scalars()
+        .all()
+    )
+
+
+def test_the_same_opt_out_twice_records_one_suppression(db_session: Session) -> None:
+    """`T-102a` criterion 2. Suppressions cannot be deleted (§15.6), so a duplicate is permanent
+    noise in the one table an operator reads to answer "why was this person not contacted".
+
+    The second delivery is spelled differently on purpose: idempotency has to key on the
+    normalized identity, or a provider echoing back `Twice@EXAMPLE.com` defeats it.
+    """
+    first = record_opt_out(db_session, email="twice@example.com", reason="SYNTHETIC unsubscribe")
+    db_session.flush()
+
+    second = record_opt_out(db_session, email="Twice@EXAMPLE.com", reason="SYNTHETIC again")
+    db_session.flush()
+
+    assert len(_rows_for(db_session, "twice@example.com")) == 1
+    assert [row.id for row in first] == [row.id for row in second]
+
+
+def test_an_opt_out_is_never_future_dated(db_session: Session) -> None:
+    """`T-102a` criterion 3. A provider clock running ahead, or a replayed event carrying its
+    original timestamp, would otherwise leave a window in which the send transaction still lets
+    the message through — `effective_at` is checked with `<=`."""
+    far_future = datetime.now(UTC) + timedelta(days=30)
+
+    [record] = record_opt_out(
+        db_session, email="future@example.com", reason="SYNTHETIC unsubscribe", at=far_future
+    )
+    db_session.flush()
+
+    assert record.effective_at <= datetime.now(UTC)
+    assert is_suppressed(db_session, email="future@example.com", at=datetime.now(UTC))
+
+
+def test_an_opt_out_recorded_earlier_keeps_the_earlier_moment(db_session: Session) -> None:
+    """The clamp is one-directional. Suppressing *earlier* than now is the safe direction, so a
+    late-delivered unsubscribe keeps the time the person actually sent it."""
+    [record] = record_opt_out(
+        db_session, email="backdated@example.com", reason="SYNTHETIC unsubscribe", at=EARLIER
+    )
+    db_session.flush()
+
+    assert record.effective_at == EARLIER
+
+
+@pytest.mark.parametrize(
+    "source", sorted(set(SuppressionSource) - UNLIFTABLE_SOURCES, key=lambda item: item.value)
+)
+def test_an_opt_out_may_not_be_recorded_under_a_liftable_source(
+    db_session: Session, source: SuppressionSource
+) -> None:
+    """`T-102a` criterion 4. Recording an opt-out as `MANUAL` leaves it liftable with a reason,
+    which is the one property it must never have. Refused, not quietly downgraded."""
+    with pytest.raises(SuppressionError) as exc:
+        record_opt_out(db_session, email="liftable@example.com", reason="SYNTHETIC", source=source)
+
+    assert source.value in str(exc.value)
+    assert _rows_for(db_session, "liftable@example.com") == []
+
+
+@pytest.mark.parametrize("source", sorted(UNLIFTABLE_SOURCES, key=lambda item: item.value))
+def test_both_permanent_sources_are_accepted(
+    db_session: Session, source: SuppressionSource
+) -> None:
+    """A spam complaint is an opt-out too, and it is just as permanent."""
+    [record] = record_opt_out(
+        db_session, email=f"{source.value}@example.com", reason="SYNTHETIC", source=source
+    )
+    db_session.flush()
+
+    assert record.source is source
+
+
+def test_an_opt_out_records_the_person_as_well_as_the_mailbox(
+    db_session: Session, contact: Contact
+) -> None:
+    """The person asked not to be contacted, not the mailbox. A second address on the same
+    contact must not undo it."""
+    records = record_opt_out(
+        db_session,
+        email="person@example.com",
+        reason="SYNTHETIC unsubscribe",
+        contact_id=contact.id,
+    )
+    db_session.flush()
+
+    assert {row.scope for row in records} == {SuppressionScope.EMAIL, SuppressionScope.PERSON}
+    assert is_suppressed(db_session, contact_id=contact.id, at=datetime.now(UTC))
+
+
+def test_an_opt_out_stops_the_final_send_transaction(db_session: Session) -> None:
+    """The §11.4 form, which is where a send is actually refused."""
+    record_opt_out(db_session, email="stop@example.com", reason="SYNTHETIC unsubscribe")
+    db_session.flush()
+
+    with pytest.raises(RecipientSuppressed):
+        require_not_suppressed(db_session, email="stop@example.com")
+
+
+def test_a_liftable_suppression_does_not_stand_in_for_an_opt_out(db_session: Session) -> None:
+    """The half of idempotency that must *not* deduplicate.
+
+    A `MANUAL` suppression on the same address can be lifted with a recorded reason. If it
+    satisfied the opt-out, lifting it would silently un-suppress someone who had asked to be left
+    alone — so the opt-out is written alongside it.
+    """
+    suppress(
+        db_session,
+        SuppressionScope.EMAIL,
+        "manual@example.com",
+        source=SuppressionSource.MANUAL,
+    )
+
+    [record] = record_opt_out(db_session, email="manual@example.com", reason="SYNTHETIC unsub")
+    db_session.flush()
+
+    assert record.source is SuppressionSource.UNSUBSCRIBE
+    assert len(_rows_for(db_session, "manual@example.com")) == 2

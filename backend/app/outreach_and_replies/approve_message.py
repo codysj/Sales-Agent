@@ -11,7 +11,10 @@ after it, and it is one function because steps 4 and 5 say "in one database tran
    approval time rather than at review time. A reviewer read the card at some moment; the claim
    they relied on may have been superseded since, and `T-056` invalidates approvals for exactly
    that reason. Rechecking here closes the window between reading and approving.
-4. **One transaction: the approval record and the immutable send command.**
+4. **One transaction: the approval record and the immutable send command.** The approval pins the
+   product status version and approved claim set it was granted against (`T-157`), because §11.4
+   lists both on every consequential action and §8.4 makes either changing invalidate the
+   approval — a check that reads a null pin is a check that can never fire.
 5. **The outbox event**, in the same transaction — that is what "transactional outbox" means, and
    it is why nothing here commits: the caller owns the transaction boundary (§7.2), so a failure
    anywhere leaves the approval, the command, and the event all absent rather than some of them.
@@ -64,6 +67,10 @@ from app.drafts_and_approvals.validation import validate_revision
 from app.jobs_and_outbox.outbox import enqueue_outbox_event
 from app.outreach_and_replies.commands import create_send_command
 from app.outreach_and_replies.models import OutreachThread, SendCommand
+from app.products_and_claims.claim_models import ApprovedClaimSet
+from app.products_and_claims.claims import get_claim_set
+from app.products_and_claims.models import ProductStatusVersion
+from app.products_and_claims.status import get_effective_status
 from app.prospects.models import ContactPoint
 
 log = structlog.get_logger(__name__)
@@ -95,8 +102,11 @@ def _recheck(
     actor: Actor,
     moment: datetime,
     correlation_id: str | None,
-) -> None:
+) -> Campaign:
     """§11.3 step 3, run at approval time rather than trusted from review time.
+
+    Returns the campaign it rechecked, because `_pins` needs its product and `T-157` would
+    otherwise load the same row twice within one transaction.
 
     Read-only, deliberately: `validate_revision` rather than `apply_validation`. A recheck that
     moved the revision would be a check with a side effect, and from `review_pending` the failing
@@ -147,6 +157,45 @@ def _recheck(
             f"an approval names an exact recipient and an exact revision together (ADR-008)"
         )
 
+    return campaign
+
+
+def _pins(
+    session: Session, campaign: Campaign, moment: datetime
+) -> tuple[ProductStatusVersion, ApprovedClaimSet]:
+    """The two versions §11.4 requires every consequential action to carry (`T-157`).
+
+    §8.4 makes a changed product status or claim version invalidate an approval, and
+    `invalidation_detail` implements exactly that — but only for an approval that *pinned* them.
+    An approval pinning neither passes both checks vacuously, so the two triggers §8.4 names
+    could never fire on anything this transaction produced.
+
+    Resolved here rather than taken from the draft: the pin has to be what was true at approval
+    time. Fails closed on both, because "no claim set" is not "no claims to check" — §11.4 lists
+    `approved_claim_set_version` on every external action, and a send command carrying null there
+    is one nothing can later invalidate.
+    """
+    status = get_effective_status(session, campaign.product_id, at=moment)
+    if status is None:  # pragma: no cover - `_recheck`'s validation already refuses this
+        # Unreachable through `approve_message`: `T-055`'s `product_readiness` check fails a
+        # revision whose product has no effective status, and `_recheck` refuses on that first.
+        # Kept because this function's contract is "both pins, or a refusal" — a caller added
+        # later must not get a `None` here, and mypy holds us to the narrowing.
+        raise ApprovalTransactionRefused(
+            f"product {campaign.product_id} has no effective status version at "
+            f"{moment.isoformat()}; §11.4 requires the approval to pin one"
+        )
+
+    claim_set = get_claim_set(session, product_id=campaign.product_id, campaign_id=campaign.id)
+    if claim_set is None:
+        raise ApprovalTransactionRefused(
+            f"campaign {campaign.id} has no current approved claim set for product "
+            f"{campaign.product_id}; an approval that pins no claim set cannot be invalidated "
+            f"when the claims change (§11.4, §8.4)"
+        )
+
+    return status, claim_set
+
 
 def approve_message(
     session: Session,
@@ -182,7 +231,7 @@ def approve_message(
     if candidate is None:  # pragma: no cover - the draft's foreign key prevents this
         raise ApprovalTransactionRefused(f"revision {revision.id} belongs to no candidate")
 
-    _recheck(
+    campaign = _recheck(
         session,
         revision,
         recipient,
@@ -191,6 +240,7 @@ def approve_message(
         moment=moment,
         correlation_id=correlation_id,
     )
+    status_version, claim_set = _pins(session, campaign, moment)
 
     # Step 4. `request_approval` writes the pending record and `approve` decides it; both are
     # `T-021`'s, and going through them keeps §8.2's approval lifecycle the only way an approval
@@ -200,6 +250,8 @@ def approve_message(
         revision=revision,
         approver_id=approver_id,
         actor=actor,
+        product_status_version_id=status_version.id,
+        approved_claim_set_id=claim_set.id,
         now=moment,
         correlation_id=correlation_id,
     )

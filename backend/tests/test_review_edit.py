@@ -32,6 +32,7 @@ from app.campaigns.models import Campaign
 from app.campaigns.policy import CampaignPolicy
 from app.campaigns.service import publish_policy_version
 from app.core.lifecycles import ApprovalState, CampaignCandidateState, MessageRevisionState
+from app.core.security import CSRF_HEADER
 from app.db.session import dispose_engines
 from app.drafts_and_approvals import revisions
 from app.drafts_and_approvals.approval import Approval, approve, request_approval
@@ -51,7 +52,7 @@ from app.prospects.models import (
     ContactPointType,
     VerificationState,
 )
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 
@@ -88,7 +89,7 @@ class World:
             session,
             campaign_id=self.campaign.id,
             policy=CampaignPolicy(),
-            approved_by="approver-1",
+            approved_by=APPROVER,
             approved_at=NOW,
         )
         self.contact = Contact(account_id=self.account.id, full_name="SYNTHETIC Person")
@@ -160,7 +161,7 @@ def approve_revision(
     by the edge that exists for it.
     """
     approval = request_approval(
-        session, revision=revision, approver_id="approver-1", actor=OPERATOR, now=NOW
+        session, revision=revision, approver_id=APPROVER, actor=OPERATOR, now=NOW
     )
     if decided:
         approve(session, approval, actor=OPERATOR, now=NOW)
@@ -496,16 +497,20 @@ def edit_payload(**overrides: object) -> dict[str, object]:
 def test_a_cookie_cannot_authenticate_a_mutation(
     client: TestClient, db_session: Session, world: World
 ) -> None:
-    """A CSRF attack works because a browser attaches a cookie by itself. `T-070` adds real
-    protection; until then the exposure is removed rather than accepted on trust, and this is the
-    test that stops it being relaxed by accident."""
+    """A CSRF attack works because a browser attaches a cookie by itself. `T-070a` made that
+    survivable — a cookie caller now passes by echoing the CSRF token — and this is the test that
+    stops the *bare* cookie being accepted by accident."""
     token = sign_in(db_session, RoleKey.OPERATOR_REVIEWER)
     client.cookies.set(SESSION_COOKIE, token)
 
     response = client.post(f"/api/review/revisions/{world.revision.id}/edit", json=edit_payload())
 
-    assert response.status_code == 401
-    assert "T-070" in response.json()["detail"]
+    # `403`, not `401`, since `T-070a`: the caller *is* authenticated, and the missing thing
+    # is the CSRF token. Telling them to sign in again would send them round a loop that
+    # cannot fix it. The property this test protects is unchanged — a cookie alone still
+    # cannot mutate anything.
+    assert response.status_code == 403
+    assert CSRF_HEADER in response.json()["detail"].lower()
 
 
 def test_a_bearer_token_can(client: TestClient, db_session: Session, world: World) -> None:

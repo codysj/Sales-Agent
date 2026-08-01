@@ -176,6 +176,30 @@ def test_the_orm_cannot_edit_a_persisted_event(db_session: Session) -> None:
         db_session.flush()
 
 
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("actor_id", "somebody-else"), ("actor_type", "SERVICE")],
+)
+def test_the_actor_cannot_be_rewritten(db_session: Session, column: str, value: str) -> None:
+    """§15.1's "immutable actor attribution", asserted on the actor columns specifically (`T-070c`).
+
+    The append-only trigger above already refuses every `UPDATE`, so this is the same wall seen
+    from the angle the specification names. Worth its own test because "the actor cannot be
+    changed" is the sentence a reader comes here to check, and a trigger that was ever narrowed
+    to particular columns would still pass `test_update_is_rejected_by_the_database`.
+    """
+    event = _record(db_session)
+    db_session.flush()
+
+    with pytest.raises(DBAPIError) as exc:
+        db_session.execute(
+            text(f"UPDATE audit_event SET {column} = :value WHERE id = :id"),
+            {"value": value, "id": event.id},
+        )
+
+    assert "append-only" in str(exc.value)
+
+
 # --- payload safety (§15.5) ------------------------------------------------------------------
 
 

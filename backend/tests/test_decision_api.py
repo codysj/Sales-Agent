@@ -51,7 +51,7 @@ from app.prospects.models import (
     VerificationState,
 )
 from app.research_and_evidence import jobs as research_jobs
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 
@@ -92,10 +92,13 @@ def a_user(session: Session, role: RoleKey) -> User:
 
 
 @pytest.fixture
-def reviewer_token(db_session: Session) -> str:
-    return issue_session(
-        db_session, a_user(db_session, RoleKey.OPERATOR_REVIEWER), issued_via="test"
-    ).token
+def reviewer_user(db_session: Session) -> User:
+    return a_user(db_session, RoleKey.OPERATOR_REVIEWER)
+
+
+@pytest.fixture
+def reviewer_token(db_session: Session, reviewer_user: User) -> str:
+    return issue_session(db_session, reviewer_user, issued_via="test").token
 
 
 @pytest.fixture
@@ -128,7 +131,7 @@ class World:
             session,
             campaign_id=self.campaign.id,
             policy=CampaignPolicy(),
-            approved_by="approver-1",
+            approved_by=APPROVER,
             approved_at=NOW,
         )
         self.candidate = create_candidate(
@@ -219,12 +222,16 @@ def test_supplying_an_actor_is_refused_rather_than_ignored(
 
 
 def test_the_actor_comes_from_the_session(
-    client: TestClient, db_session: Session, world: World, reviewer_token: str
+    client: TestClient, db_session: Session, world: World, reviewer_user: User, reviewer_token: str
 ) -> None:
-    """The recorded actor is the session's user, not anything the request said."""
-    signed_in = db_session.execute(select(User).order_by(User.created_at.desc())).scalars().first()
-    assert signed_in is not None
+    """The recorded actor is the session's user, not anything the request said.
 
+    Named through the fixture rather than found with `order_by(created_at.desc()).first()`, which
+    is what this used to do. `created_at` defaults to `now()`, which in PostgreSQL is the
+    *transaction* start time — every row this test writes shares one timestamp, so "the newest
+    user" was never a real ordering. It happened to work while the transaction held exactly one
+    user, and stopped the moment `T-136b`'s fixture seeded the approver identities.
+    """
     client.post(
         reject_url(world),
         json={"category": "wrong_campaign"},
@@ -232,7 +239,7 @@ def test_the_actor_comes_from_the_session(
     )
 
     decision = db_session.execute(select(CandidateDecision)).scalars().one()
-    assert decision.decided_by == str(signed_in.id)
+    assert decision.decided_by == str(reviewer_user.id)
     assert decision.decided_by_type == ActorType.HUMAN.value
 
 
@@ -402,7 +409,11 @@ def test_a_cookie_cannot_authenticate_a_decision(
         headers={},
     )
 
-    assert response.status_code == 401
+    # `403`, not `401`, since `T-070a`: the caller *is* authenticated, and the missing thing
+    # is the CSRF token. Telling them to sign in again would send them round a loop that
+    # cannot fix it. The property this test protects is unchanged — a cookie alone still
+    # cannot mutate anything.
+    assert response.status_code == 403
     assert db_session.execute(select(func.count()).select_from(CandidateDecision)).scalar_one() == 0
 
 
@@ -798,7 +809,11 @@ def test_a_cookie_cannot_authenticate_an_approval(
         approve_url(world), json={"recipient_contact_point_id": str(point.id)}, headers={}
     )
 
-    assert response.status_code == 401
+    # `403`, not `401`, since `T-070a`: the caller *is* authenticated, and the missing thing
+    # is the CSRF token. Telling them to sign in again would send them round a loop that
+    # cannot fix it. The property this test protects is unchanged — a cookie alone still
+    # cannot mutate anything.
+    assert response.status_code == 403
     db_session.refresh(world.candidate)
     assert world.candidate.state is CampaignCandidateState.REVIEW_PENDING
 
@@ -937,7 +952,11 @@ def test_a_cookie_cannot_authenticate_a_research_request(
         research_url(world), json={"category": "weak_or_stale_evidence"}, headers={}
     )
 
-    assert response.status_code == 401
+    # `403`, not `401`, since `T-070a`: the caller *is* authenticated, and the missing thing
+    # is the CSRF token. Telling them to sign in again would send them round a loop that
+    # cannot fix it. The property this test protects is unchanged — a cookie alone still
+    # cannot mutate anything.
+    assert response.status_code == 403
     assert db_session.execute(select(func.count()).select_from(CandidateDecision)).scalar_one() == 0
 
 

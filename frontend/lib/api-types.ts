@@ -29,6 +29,11 @@ export interface paths {
          *     A caller with no session gets `204` rather than `401`: signing out when already signed out is
          *     the state they asked for, and answering `401` would make a dashboard sign-out button fail for
          *     a reviewer whose session had just expired.
+         *
+         *     Both cookies are cleared **before** the `principal is None` return, so a caller holding a
+         *     cookie the server no longer honours still gets rid of it. Leaving a dead session cookie in the
+         *     browser is how a reviewer ends up signed out and unable to sign in again without knowing to
+         *     clear cookies by hand.
          */
         delete: operations["sign_out_api_auth_session_delete"];
         options?: never;
@@ -54,6 +59,61 @@ export interface paths {
          *     this port.
          */
         post: operations["stub_sign_in_endpoint_api_auth_stub_sign_in_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operations/flags/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Throw or release a system-wide operational switch (administrator only)
+         * @description §17.6's global pause, shadow-mode switch, and outbound-email disable.
+         *
+         *     `PAUSE_SYSTEM` is tier 5 and administrator-only (§7.4): these are the switches that stop the
+         *     system, and §12.1 gives them to nobody else. The actor comes from the session, never from the
+         *     request (§15.1, `T-070c`), and `set_flag` writes the audit event.
+         *
+         *     **A scoped key is refused by `set_flag`, not by a check here.** This route first carried its
+         *     own `key in SCOPED_KEYS` guard, and a negative control proved it dead: deleting it changed
+         *     nothing, because `PRODUCT_DISABLED` with no `scope_id` is already a `FlagError` one layer
+         *     down. A rule enforced twice is a rule that can disagree with itself, and the copy nobody
+         *     exercises is the one that drifts — the same reasoning that removed the duplicate
+         *     verification check from `approve_message._recheck`.
+         */
+        post: operations["set_operational_flag_api_operations_flags__key__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operations/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the system is doing right now (administrator only)
+         * @description Every §17.5 counter this repository has rows for, plus the switches in force.
+         *
+         *     `principal` is unused in the body and required in the signature: it is what runs the
+         *     authorization, and naming it keeps that visible at the endpoint rather than hidden in a
+         *     decorator somebody could remove without the route looking different (`T-063a`'s reasoning).
+         */
+        get: operations["operations_overview_api_operations_overview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -97,7 +157,7 @@ export interface paths {
         };
         /**
          * Approvals that no longer authorize a send
-         * @description §7.5's flag. A read, so `requires` rather than `requires_bearer`.
+         * @description §7.5's flag. A read, so `requires` rather than `requires_mutation`.
          *
          *     Only approvals still in `approved` are scanned: one already revoked or rejected is not an
          *     attention item — somebody dealt with it — and listing them would bury the ones nobody has
@@ -317,9 +377,9 @@ export interface paths {
          * Edit a draft, creating the next immutable revision
          * @description §10.5: an edit creates revision N+1 and leaves N exactly as it was.
          *
-         *     `requires_bearer`, not `requires`: this is a state-changing route, and a cookie is what a
-         *     CSRF attack rides on. See `identity.dependencies` — the exposure is removed until `T-070`
-         *     adds real protection, rather than accepted on trust.
+         *     `requires_mutation`, not `requires`: this is a state-changing route, and a cookie is what a
+         *     CSRF attack rides on. See `identity.dependencies` — a bearer token passes, and a cookie passes
+         *     only with a matching CSRF header (`T-070a`).
          *
          *     The actor comes from the session (§12.2), never from the request body. Committed here rather
          *     than by the caller: the retired approval, the superseded revision, the new one, and its
@@ -664,6 +724,25 @@ export interface components {
          */
         ContactPointType: "email" | "phone" | "linkedin_url";
         /**
+         * DeadJob
+         * @description One job that will not be retried, and why (§17.1).
+         */
+        DeadJob: {
+            /** Attempt Count */
+            attempt_count: number;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Job Type */
+            job_type: string;
+            /** Reason */
+            reason: string;
+            /** Requires Human Review */
+            requires_human_review: boolean;
+        };
+        /**
          * DecisionCategory
          * @description §10.6's eleven categories, in the specification's order.
          *
@@ -786,6 +865,45 @@ export interface components {
             source_quality: components["schemas"]["SourceQuality"];
             source_type: components["schemas"]["SourceType"];
         };
+        /**
+         * FlagChangeRequest
+         * @description Throw or release one switch, and say why.
+         */
+        FlagChangeRequest: {
+            /** Enabled */
+            enabled: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * FlagChangeResponse
+         * @description What the switch now says.
+         */
+        FlagChangeResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Key */
+            key: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Set At
+             * Format: date-time
+             */
+            set_at: string;
+            /** Set By */
+            set_by: string;
+            /** Shadow Mode */
+            shadow_mode: boolean;
+            /** What Happens Next */
+            what_happens_next: string;
+        };
+        /**
+         * FlagKey
+         * @description The database-backed subset of §17.6.
+         * @enum {string}
+         */
+        FlagKey: "global_pause" | "shadow_mode" | "outbound_email_disabled" | "product_disabled" | "claim_version_disabled";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -820,6 +938,44 @@ export interface components {
          * @enum {string}
          */
         MessageRevisionState: "draft" | "validation_failed" | "review_pending" | "approved" | "superseded" | "invalidated";
+        /**
+         * OperationsOverview
+         * @description §17.5's dashboard, as far as this repository has data for it.
+         */
+        OperationsOverview: {
+            /** Candidates Awaiting Review */
+            candidates_awaiting_review: number;
+            /** Claim Invalidations */
+            claim_invalidations: number;
+            /** Dead Job Sample */
+            dead_job_sample: components["schemas"]["DeadJob"][];
+            /** Dead Jobs */
+            dead_jobs: number;
+            /** Delivery Ambiguous Threads */
+            delivery_ambiguous_threads: number;
+            /** Flags In Force */
+            flags_in_force: string[];
+            /** Jobs By State */
+            jobs_by_state: {
+                [key: string]: number;
+            };
+            /** Not Measured */
+            not_measured: string[];
+            /** Oldest Pending Outbox Age Seconds */
+            oldest_pending_outbox_age_seconds: number | null;
+            /** Oldest Queued Job Age Seconds */
+            oldest_queued_job_age_seconds: number | null;
+            /** Oldest Review Item Age Seconds */
+            oldest_review_item_age_seconds: number | null;
+            /** Outbox Pending */
+            outbox_pending: number;
+            /** Revisions Awaiting Review */
+            revisions_awaiting_review: number;
+            /** Shadow Mode */
+            shadow_mode: boolean;
+            /** Suppressed Send Attempts */
+            suppressed_send_attempts: number;
+        };
         /** Readiness */
         Readiness: {
             /**
@@ -1169,11 +1325,85 @@ export interface operations {
             };
         };
     };
+    set_operational_flag_api_operations_flags__key__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                key: components["schemas"]["FlagKey"];
+            };
+            cookie?: {
+                mp_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagChangeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operations_overview_api_operations_overview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                mp_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     revoke_approval_endpoint_api_review_approvals__approval_id__revoke_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
+                "x-csrf-token"?: string | null;
             };
             path: {
                 approval_id: string;
@@ -1321,6 +1551,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string | null;
+                "x-csrf-token"?: string | null;
             };
             path: {
                 candidate_id: string;
@@ -1360,6 +1591,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string | null;
+                "x-csrf-token"?: string | null;
             };
             path: {
                 candidate_id: string;
@@ -1399,6 +1631,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string | null;
+                "x-csrf-token"?: string | null;
             };
             path: {
                 candidate_id: string;
@@ -1438,6 +1671,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string | null;
+                "x-csrf-token"?: string | null;
             };
             path: {
                 candidate_id: string;
@@ -1517,6 +1751,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string | null;
+                "x-csrf-token"?: string | null;
             };
             path: {
                 revision_id: string;
@@ -1556,6 +1791,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string | null;
+                "x-csrf-token"?: string | null;
             };
             path: {
                 revision_id: string;

@@ -661,3 +661,97 @@ def test_the_approval_module_reads_candidate_state_and_never_writes_it() -> None
     # to the attribute directly.
     assert "transition_candidate" not in source
     assert "candidate.state =" not in source
+
+
+# --- minting an opt-out (T-178; §15.6, §15.8) -----------------------------------------------------
+#
+# `record_opt_out()` enforces four things `record_suppression()` does not: the source must be
+# permanent, `effective_at` is clamped so an opt-out can never be future-dated, the same unsubscribe
+# twice records one row, and the person is suppressed as well as the mailbox. Calling
+# `record_suppression(source=SuppressionSource.UNSUBSCRIBE)` directly gets none of them, and because
+# a suppression cannot be deleted (§15.6) the resulting row is permanent and looks correct.
+#
+# The rule is about *minting*, not carrying. `prospects/dedup.py` passes `source=suppression.source`
+# — a variable — when it copies an existing suppression onto a surviving contact. That is a decision
+# already made, so it is deliberately not flagged, and the guard below proves the walk sees that
+# call and lets it through rather than never having found it.
+
+MINTING_FUNCTION = "record_suppression"
+
+#: Matched by attribute name, so `from ... import SuppressionSource as SS` then `SS.UNSUBSCRIBE`
+#: does not evade the check. Spelled as strings because this walk reads source, not objects.
+UNLIFTABLE_SOURCE_NAMES = frozenset({"UNSUBSCRIBE", "COMPLAINT"})
+
+
+def called_name(node: ast.Call) -> str | None:
+    """The bare function name of a call, whether written `f()` or `pkg.mod.f()`."""
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def local_names_for(tree: ast.AST, target: str) -> set[str]:
+    """Every local name bound to ``target``, so `import record_suppression as rs` is caught too."""
+    names = {target}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names.update(
+                alias.asname for alias in node.names if alias.name == target and alias.asname
+            )
+    return names
+
+
+def opt_out_minting_lines(tree: ast.AST) -> list[int]:
+    """Lines where a *literal* unliftable source is handed to `record_suppression`."""
+    names = local_names_for(tree, MINTING_FUNCTION)
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and called_name(node) in names
+        for keyword in node.keywords
+        if keyword.arg == "source"
+        and isinstance(keyword.value, ast.Attribute)
+        and keyword.value.attr in UNLIFTABLE_SOURCE_NAMES
+    ]
+
+
+def test_no_module_mints_an_opt_out_around_record_opt_out() -> None:
+    """`T-178`. The bypass `T-102b` and `T-103` are the natural authors of.
+
+    **Known limit:** a source held in a variable (`src = SuppressionSource.UNSUBSCRIBE`) or splatted
+    through `**kwargs` reads as a `Name`, not an `Attribute`, and is out of this walk's reach. It
+    catches the way the bypass would actually be written, which is why the message names the
+    sanctioned function rather than only refusing.
+    """
+    offenders = {
+        str(path.relative_to(APP)): lines
+        for path in sorted(APP.rglob("*.py"))
+        if (lines := opt_out_minting_lines(ast.parse(path.read_text(encoding="utf-8"))))
+    }
+
+    assert offenders == {}, (
+        f"{offenders} mint an opt-out through {MINTING_FUNCTION}(), which does not clamp "
+        f"effective_at, refuse a liftable source, or deduplicate. Use record_opt_out()."
+    )
+
+
+def test_the_opt_out_walk_sees_the_call_it_is_required_not_to_flag() -> None:
+    """The guard on the guard.
+
+    A walk that found nothing would pass the test above forever. `dedup.py` holds the one
+    legitimate `record_suppression` call that carries an unliftable source, so it is the exact
+    place to prove the detector both fires and discriminates.
+    """
+    tree = ast.parse((APP / "prospects" / "dedup.py").read_text(encoding="utf-8"))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and called_name(node) == MINTING_FUNCTION
+    ]
+
+    assert calls, f"the walk no longer finds {MINTING_FUNCTION} in dedup.py; it is misreading"
+    assert opt_out_minting_lines(tree) == [], (
+        "dedup carries an already-recorded source rather than minting one, and must not be flagged"
+    )

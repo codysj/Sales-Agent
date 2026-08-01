@@ -20,6 +20,10 @@ dev = [
     "mypy>=1.13",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    # `tests/test_ci_workflow.py` parses `.github/workflows/ci.yml` (T-007). PyYAML already
+    # arrives transitively through `uvicorn[standard]`, and a test that depends on somebody
+    # else's transitive dependency breaks the day that extra changes.
+    "pyyaml>=6",
     "ruff>=0.8",
 ]
 

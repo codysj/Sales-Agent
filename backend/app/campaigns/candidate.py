@@ -12,8 +12,9 @@ both; a trigger makes that impossible.
 """
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, UniqueConstraint, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from app.audit_and_operations.service import Actor, record_audit_event
@@ -153,3 +154,25 @@ def transition(
         correlation_id=correlation_id,
     )
     return candidate
+
+
+# --- operational counters (T-069a; §17.5 "review backlog and age") -------------------------------
+#
+# Here because `campaigns` owns `CampaignCandidateState`; see `jobs_and_outbox.queue` for the same
+# reasoning applied to job states.
+
+
+def candidates_awaiting_review(session: Session) -> int:
+    return session.execute(
+        select(func.count())
+        .select_from(CampaignCandidate)
+        .where(CampaignCandidate.state == CampaignCandidateState.REVIEW_PENDING)
+    ).scalar_one()
+
+
+def oldest_candidate_awaiting_review_at(session: Session) -> datetime | None:
+    return session.execute(
+        select(func.min(CampaignCandidate.updated_at)).where(
+            CampaignCandidate.state == CampaignCandidateState.REVIEW_PENDING
+        )
+    ).scalar_one_or_none()

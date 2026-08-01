@@ -47,8 +47,7 @@ from app.identity.sessions import issue_session
 from app.main import create_app
 from app.outreach_and_replies.approve_message import approve_message
 from app.products_and_claims.claim_models import ApprovedClaimSet
-from tests.factories import NOW
-from tests.test_revision_validation import APPROVER
+from tests.factories import APPROVER, NOW
 from tests.test_revision_validation import World as ValidWorld
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
@@ -74,11 +73,13 @@ class World(ValidWorld):
         revisions.transition(
             session, self.revision, MessageRevisionState.REVIEW_PENDING, actor=OPERATOR
         )
+        # `T-157`: the transaction refuses to grant an approval that pins no claim set.
+        self.claim_set = self.publish_current_claim_set()
         outcome = approve_message(
             session,
             self.revision,
             recipient=self.recipient,
-            approver_id="approver-1",
+            approver_id=APPROVER,
             actor=OPERATOR,
         )
         self.approval = outcome.approval
@@ -89,11 +90,15 @@ class World(ValidWorld):
         `approved_claim_set_id` references `approved_claim_set`, so a random UUID cannot stand in
         for one — the insert is refused before any invalidation logic runs. Superseding it is the
         real mechanism `T-056` uses.
+
+        Inserted directly rather than through `publish_claim_set`, and at the next free version:
+        publishing would supersede the world's current set, and since `T-157` that set is the one
+        `self.approval` pins — so every test here would start with an already-invalid approval.
         """
         claim_set = ApprovedClaimSet(
             product_id=self.product.id,
             campaign_id=self.campaign.id,
-            version=1,
+            version=self._next_claim_set_version(),
             approved_by=APPROVER,
             approved_at=NOW - timedelta(days=2),
             superseded_at=(NOW - timedelta(days=1)) if superseded else None,
@@ -101,6 +106,20 @@ class World(ValidWorld):
         self.session.add(claim_set)
         self.session.flush()
         return claim_set
+
+    def _next_claim_set_version(self) -> int:
+        """The next free version for this product and campaign.
+
+        `uq_approved_claim_set_scope_version` is the real arbiter; this only keeps the fixture
+        from colliding with the set published in `__init__`.
+        """
+        highest = self.session.execute(
+            select(func.max(ApprovedClaimSet.version)).where(
+                ApprovedClaimSet.product_id == self.product.id,
+                ApprovedClaimSet.campaign_id == self.campaign.id,
+            )
+        ).scalar_one()
+        return int(highest or 0) + 1
 
     def pinned_approval(
         self,
@@ -126,7 +145,7 @@ class World(ValidWorld):
         approval = request_approval(
             self.session,
             revision=revision,
-            approver_id="approver-1",
+            approver_id=APPROVER,
             actor=OPERATOR,
             product_status_version_id=product_status_version_id,
             approved_claim_set_id=approved_claim_set_id,
@@ -511,7 +530,11 @@ def test_a_cookie_cannot_authenticate_a_revocation(
 
     response = client.post(revoke_url(world), json={"reason": "SYNTHETIC"}, headers={})
 
-    assert response.status_code == 401
+    # `403`, not `401`, since `T-070a`: the caller *is* authenticated, and the missing thing
+    # is the CSRF token. Telling them to sign in again would send them round a loop that
+    # cannot fix it. The property this test protects is unchanged — a cookie alone still
+    # cannot mutate anything.
+    assert response.status_code == 403
     db_session.refresh(world.approval)
     assert world.approval.state is ApprovalState.APPROVED
 

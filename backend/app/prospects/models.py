@@ -108,6 +108,8 @@ class Contact(Base, TimestampMixin):
     __table_args__ = (
         CheckConstraint("length(trim(full_name)) > 0", name="full_name_not_blank"),
         Index("ix_contact_account_id", "account_id"),
+        # `T-144b` reads provenance per candidate during qualification, so the lookup is hot.
+        Index("ix_contact_source_import_batch_id", "source_import_batch_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -116,6 +118,25 @@ class Contact(Base, TimestampMixin):
     )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role_title: Mapped[str | None] = mapped_column(String(255))
+
+    #: Where this identity came from (`T-144a`; §9.3, §10.1 stage 1 "approved source basis").
+    #:
+    #: **On the contact, not the candidate and not the account.** A candidate's source basis is
+    #: inherited rather than its own, and a contact can arrive from a different source than the
+    #: company it belongs to — so the identity that actually gets contacted is where provenance
+    #: has to live for `T-144b`'s rule to mean anything.
+    #:
+    #: Nullable, and nothing refuses on it yet: rows that predate this column have no batch to
+    #: name, and inventing one would be a provenance claim nobody checked. `T-144b` decides what
+    #: a missing basis means for eligibility — fail closed — which is a separate, reviewable
+    #: change because it can flip who may be contacted. `RESTRICT`: a batch that explains where a
+    #: person came from must not be deletable out from under them (§14.2).
+    #:
+    #: Declared by table name rather than by importing `prospects.imports`, which imports this
+    #: module — the string keeps the dependency one-way.
+    source_import_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("import_batch.id", ondelete="RESTRICT")
+    )
 
     account: Mapped[Account] = relationship(back_populates="contacts")
     contact_points: Mapped[list["ContactPoint"]] = relationship(

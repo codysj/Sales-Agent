@@ -13,6 +13,11 @@
     "test": "vitest run",
     "generate:api": "openapi-typescript openapi.json -o lib/api-types.ts"
   },
+  "//overrides": "T-152. next@16.2.12 is the latest stable and pins postcss to 8.4.31 and sharp to ^0.34.5, both of which carry high-severity advisories; the fix exists only in next's preview/canary line, and npm audit fix proposes next@9.3.3 — a five-major downgrade, which is worse than the advisories. These raise the two transitive packages instead, within their own major. Drop an entry once a stable next ships past it.",
+  "overrides": {
+    "postcss": "^8.5.25",
+    "sharp": "^0.35.3"
+  },
   "dependencies": {
     "next": "^16.2.12",
     "react": "^19.2.8",

@@ -112,7 +112,8 @@ class MessageRevision(Base, TimestampMixin):
     #: Set when the revision leaves circulation, i.e. superseded or invalidated.
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    #: Identity string until T-012's user table exists; T-136 converts it.
+    #: An `Actor` id, not a user (ADR-025). `T-136` closed without converting this one: a
+    #: revision is authored by the model gateway as often as by a reviewer editing it.
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
 
     draft: Mapped[MessageDraft] = relationship(back_populates="revisions")

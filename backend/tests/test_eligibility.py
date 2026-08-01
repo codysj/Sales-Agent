@@ -28,6 +28,7 @@ from app.campaigns.policy import CampaignPolicy
 from app.campaigns.service import NoCurrentPolicy, publish_policy_version
 from app.core.lifecycles import CampaignCandidateState
 from app.products_and_claims.models import Product, ProductStatusVersion, ReadinessCategory
+from app.prospects.imports import import_csv
 from app.prospects.models import (
     Account,
     Contact,
@@ -35,19 +36,25 @@ from app.prospects.models import (
     ContactPointType,
     VerificationState,
 )
-from app.prospects.suppression import SuppressionScope, SuppressionSource, record_suppression
+from app.prospects.suppression import (
+    SuppressionScope,
+    SuppressionSource,
+    record_opt_out,
+    record_suppression,
+)
 from app.qualification.eligibility import (
     DEFERRED_RULES,
     IMPLEMENTED_RULES,
     EligibilityFailure,
     Rule,
+    _check_source_basis,
     apply_eligibility,
     evaluate,
 )
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW, a_source_batch
+from tests.factories import World as SharedWorld
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
-APPROVER = "approver-1"
 
 MODULE = Path(__file__).resolve().parents[1] / "app" / "qualification" / "eligibility.py"
 
@@ -98,7 +105,13 @@ class World:
             approved_at=NOW,
         )
 
-        self.contact = Contact(account_id=self.account.id, full_name="SYNTHETIC Person")
+        self.contact = Contact(
+            account_id=self.account.id,
+            full_name="SYNTHETIC Person",
+            # An approved source basis, so every other rule in this file is what is under test
+            # rather than provenance (`T-144b`).
+            source_import_batch_id=a_source_batch(session).id,
+        )
         session.add(self.contact)
         session.flush()
 
@@ -201,6 +214,26 @@ def test_suppression_refuses_at_every_scope(world: World, scope: SuppressionScop
         effective_at=NOW - timedelta(days=1),
     )
     world.session.flush()
+
+    assert world.decide() == [Rule.SUPPRESSION]
+
+
+def test_an_opt_out_makes_an_eligible_candidate_ineligible_at_the_same_instant(
+    world: World,
+) -> None:
+    """`T-102a` criterion 1 — §15.6's "suppression changes apply immediately across active
+    campaigns", read as strictly as it is written.
+
+    The candidate is evaluated eligible, the opt-out is recorded, and the candidate is evaluated
+    again **at the same moment**. Nothing else is touched: no campaign edit, no re-import, no
+    re-run of the pipeline. If immediacy needed a fan-out job, this would still pass on the first
+    call and fail on the second, so the assertion is that `SUPPRESSION` is the *only* new failure.
+    """
+    assert evaluate(world.session, world.candidate, at=NOW).is_eligible
+
+    record_opt_out(
+        world.session, email=world.email.value, reason="SYNTHETIC unsubscribe request", at=NOW
+    )
 
     assert world.decide() == [Rule.SUPPRESSION]
 
@@ -309,7 +342,13 @@ def test_contactability_refuses_an_account_level_candidate(db_session: Session) 
 
     failures = evaluate(db_session, account_level, at=NOW).failures
 
-    assert [failure.rule for failure in failures] == [Rule.CONTACTABILITY]
+    # Both, and for the same underlying fact: there is no person here. Contactability says the
+    # candidate cannot be reached; source basis says nobody recorded where it came from, because
+    # provenance lives on the contact that does not exist (`T-144b`).
+    assert [failure.rule for failure in failures] == [
+        Rule.CONTACTABILITY,
+        Rule.APPROVED_SOURCE_BASIS,
+    ]
 
 
 def test_a_campaign_with_no_published_policy_refuses_rather_than_defaulting(
@@ -340,10 +379,11 @@ def test_a_campaign_with_no_published_policy_refuses_rather_than_defaulting(
 # --- criterion 2: all reasons, not just the first ---------------------------------------------
 
 
-def test_a_candidate_failing_four_rules_records_all_four(world: World) -> None:
+def test_a_candidate_failing_every_implemented_rule_records_them_all(world: World) -> None:
     world.account.country_code = "DE"
     world.status.readiness_category = ReadinessCategory.SELLABLE_NOW
     world.email.verification_state = VerificationState.INVALID
+    world.contact.source_import_batch_id = None
     world.republish(CampaignPolicy(excluded_domains=(world.account.domain,)))
     record_suppression(
         world.session,
@@ -509,10 +549,9 @@ def test_each_deferred_rule_names_the_task_that_will_implement_it() -> None:
         assert "T-1" in reason, f"{rule.value} does not name a task"
 
 
-def test_the_deferred_rules_are_exactly_the_three_without_inputs() -> None:
+def test_the_deferred_rules_are_exactly_the_two_without_inputs() -> None:
     assert set(DEFERRED_RULES) == {
         Rule.EXISTING_RELATIONSHIP,
-        Rule.APPROVED_SOURCE_BASIS,
         Rule.OBVIOUS_NON_FIT,
     }
 
@@ -525,6 +564,110 @@ def test_no_deferred_rule_can_appear_in_a_decision(world: World) -> None:
     decision = evaluate(world.session, world.candidate, at=NOW)
 
     assert not {failure.rule for failure in decision.failures} & set(DEFERRED_RULES)
+
+
+# --- T-144b: §10.1 stage 1, approved source basis ----------------------------------------------
+
+
+def test_the_shared_factory_builds_a_candidate_that_passes_stage_one(db_session: Session) -> None:
+    """`tests/factories.World` — the *other* world, used by twelve suites — keeps its provenance.
+
+    Written because a control proved its provenance was load-bearing for nothing: this file and
+    `test_pipeline_jobs.py` each build their own `World`, so stripping the shared factory's
+    source basis failed no test at all. A fixture that quietly stops satisfying §10.1 stage 1 is
+    how a later suite gets a confusing `ineligible` far from the cause.
+    """
+    shared = SharedWorld(db_session)
+
+    decision = evaluate(db_session, shared.candidate, at=NOW)
+
+    # Source basis specifically, not full eligibility: that world is built for the §11.4 send
+    # chain and has never had a country or a readiness version, so asserting it passes every rule
+    # would be asserting something it was not for.
+    assert _check_source_basis(db_session, shared.contact) is None
+    assert Rule.APPROVED_SOURCE_BASIS not in {f.rule for f in decision.failures}
+
+
+def test_a_candidate_with_no_recorded_source_basis_is_ineligible(world: World) -> None:
+    """Criterion 1, and the direction that matters: refused, not passed by default.
+
+    The row exists and nobody said where it came from. §9.3 refuses to *begin* with scraped or
+    unattributed data, so the default has to be refusal — a rule that let an unattributed row
+    through would read as coverage while enforcing nothing.
+    """
+    world.contact.source_import_batch_id = None
+    world.session.flush()
+
+    decision = evaluate(world.session, world.candidate, at=NOW)
+
+    assert not decision.is_eligible
+    failure = next(f for f in decision.failures if f.rule is Rule.APPROVED_SOURCE_BASIS)
+    assert failure.inputs == {"source": "unrecorded"}
+
+
+def test_a_candidate_from_an_unapproved_source_type_is_ineligible(world: World) -> None:
+    """An allow-list, not a deny-list: a batch nobody approved refuses even though it exists."""
+    batch = a_source_batch(world.session)
+    batch.source_type = "scraped"
+    world.session.flush()
+
+    decision = evaluate(world.session, world.candidate, at=NOW)
+
+    failure = next(f for f in decision.failures if f.rule is Rule.APPROVED_SOURCE_BASIS)
+    assert failure.inputs == {"source": "scraped"}
+    assert "approved list" in failure.reason
+
+
+def test_a_candidate_imported_from_csv_is_eligible(db_session: Session) -> None:
+    """Criterion 2, through the real import path rather than by setting the column.
+
+    §9.3 names manual/CSV import first, so this is the one source the allow-list holds today, and
+    the batch the contact came from is identifiable from the candidate.
+    """
+    world = World(db_session)
+    result = import_csv(
+        db_session,
+        content=(
+            "account_domain,account_name,country_code,full_name,role_title,"
+            "contact_type,contact_value"
+            + chr(10)
+            + f"{world.account.domain},SYNTHETIC-Account,US,SYNTHETIC Imported Person,"
+            "SYNTHETIC Lead,email,imported.person@" + world.account.domain + chr(10)
+        ).encode("utf-8"),
+        source_name="approved.csv",
+        actor=OPERATOR,
+    )
+    imported = db_session.execute(
+        select(Contact).where(Contact.full_name == "SYNTHETIC Imported Person")
+    ).scalar_one()
+
+    assert imported.source_import_batch_id == result.batch.id
+    assert _check_source_basis(db_session, imported) is None
+
+
+def test_the_refusal_names_the_source_type_and_never_the_person(world: World) -> None:
+    """§15.5. A reviewer needs which rule fired and on what basis; the row is one query away."""
+    batch = a_source_batch(world.session)
+    batch.source_type = "scraped"
+    world.session.flush()
+
+    failure = next(
+        f
+        for f in evaluate(world.session, world.candidate, at=NOW).failures
+        if f.rule is Rule.APPROVED_SOURCE_BASIS
+    )
+    rendered = failure.reason + str(failure.inputs)
+
+    assert world.contact.full_name not in rendered
+    assert batch.source_name not in rendered
+    assert world.email.value not in rendered
+
+
+def test_the_source_basis_rule_is_no_longer_deferred(world: World) -> None:
+    # The pair to `T-144a`'s test, which said in its own message that it would be wrong once
+    # this landed. It was, and this replaces it.
+    assert Rule.APPROVED_SOURCE_BASIS in IMPLEMENTED_RULES
+    assert Rule.APPROVED_SOURCE_BASIS not in DEFERRED_RULES
 
 
 # --- criterion 4: the fixture rows that must be ineligible by default --------------------------

@@ -29,6 +29,7 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
     func,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -39,6 +40,11 @@ from app.audit_and_operations.service import Actor, current_correlation_id, reco
 from app.db.base import Base, TimestampMixin
 
 ENTITY_TYPE = "outbox_event"
+
+#: The audit action a §11.4 recheck refusal is written under. A constant rather than a literal in
+#: two places: `dispatch` writes it and `refused_by_check_count` reads it, and a renamed string in
+#: one of them would silently make every count zero (`T-161`).
+RECHECK_REFUSED_ACTION = "outbox.recheck_refused"
 
 #: Key under which `session.info` accumulates what kinds of row this transaction has written.
 _WRITTEN_KINDS = "outbox_written_kinds"
@@ -287,3 +293,45 @@ def commit_with_outbox(session: Session) -> None:
             )
 
     session.commit()
+
+
+# --- operational counters (T-069a; §17.5 "outbox backlog") ---------------------------------------
+
+
+def pending_outbox_count(session: Session) -> int:
+    count: int = session.execute(
+        select(func.count())
+        .select_from(OutboxEvent)
+        .where(OutboxEvent.state == OutboxState.PENDING)
+    ).scalar_one()
+    return count
+
+
+def oldest_pending_outbox_at(session: Session) -> datetime | None:
+    return session.execute(
+        select(func.min(OutboxEvent.created_at)).where(OutboxEvent.state == OutboxState.PENDING)
+    ).scalar_one_or_none()
+
+
+def refused_by_check_count(session: Session, check: str) -> int:
+    """How many dispatches a named §11.4 recheck has refused (`T-161`; §17.5).
+
+    Counts audit rows rather than outbox rows on purpose. An outbox event carries only its *last*
+    outcome, so a recipient suppressed on three separate dispatch attempts would count once — and
+    §17.5 asks for suppressed-send **attempts**. The audit trail is append-only (`T-011`), so every
+    attempt is still there.
+
+    The check name is a parameter rather than a constant here: this package writes the refusal but
+    `outreach_and_replies` owns which check means what (`Recheck`), and importing it would invert
+    the §18.2 direction. Passing an unknown name is not an error — it is a count of zero, which is
+    the truthful answer to "how many times did that refuse".
+    """
+    count: int = session.execute(
+        select(func.count())
+        .select_from(AuditEvent)
+        .where(
+            AuditEvent.action == RECHECK_REFUSED_ACTION,
+            AuditEvent.payload["refused_check"].astext == check,
+        )
+    ).scalar_one()
+    return count

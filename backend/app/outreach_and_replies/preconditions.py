@@ -107,6 +107,23 @@ class PreconditionFailure(Exception):
         return self.check in RECOVERABLE
 
 
+class SuppressedAtSend(PreconditionFailure):
+    """§11.4's suppression recheck refused, and *which scope* matched (`T-161`; §17.5, §15.5).
+
+    The scope is a category — ``email``, ``person``, ``domain``, ``account`` — and never the
+    identity that matched. §15.5 keeps addresses and names out of trails and log lines, and the
+    category is what an operator needs anyway: a run of ``domain`` matches is a different incident
+    from a run of ``person`` ones.
+
+    Read off the exception by attribute in `jobs_and_outbox.dispatch`, the same way `check` and
+    `detail` already are, because that package must not import this one (§18.2).
+    """
+
+    def __init__(self, scope: str) -> None:
+        self.scope = scope
+        super().__init__(Recheck.SUPPRESSION, f"suppressed at {scope} scope")
+
+
 class MissingSendCommand(PreconditionFailure):
     """No send command carries this outbox event's idempotency key."""
 
@@ -211,9 +228,7 @@ def _check_suppression(session: Session, recipient: ContactPoint, now: datetime)
         at=now,
     )
     if suppression is not None:
-        raise PreconditionFailure(
-            Recheck.SUPPRESSION, f"suppressed at {suppression.scope.value} scope"
-        )
+        raise SuppressedAtSend(suppression.scope.value)
 
 
 def _check_email_verification(recipient: ContactPoint, policy: CampaignPolicy) -> None:

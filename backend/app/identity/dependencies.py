@@ -14,12 +14,16 @@ put session tokens in access logs, browser history, and any `Referer` a page lea
 why it is not read from one here, and why `tests/test_review_api.py` asserts a token in the query
 string does not authenticate.
 
-**A mutation refuses cookie authentication, until `T-070`.** A CSRF attack works because a
-browser attaches a cookie by itself; a bearer token it never sends unprompted. `T-061a` deferred
-CSRF to the first cookie-bearing mutating endpoint and `T-070` owns it — so rather than accept
-the exposure on trust in the meantime, `requires_bearer` refuses a cookie-only caller on any
-state-changing route. The dashboard reads with a cookie and will mutate with a token until
-`T-070` lands, at which point this can relax deliberately rather than by nobody noticing.
+**A mutation authenticated by cookie must carry a CSRF token (`T-070a`).** A CSRF attack works
+because a browser attaches a cookie by itself; a bearer token it never sends unprompted. Until
+`T-070a` the answer was to refuse cookie authentication outright on state-changing routes —
+exposure removed rather than mitigated, and honest about being temporary. `requires_mutation` is
+that relaxation, made deliberately: a bearer caller passes as before, and a cookie caller passes
+only by echoing the CSRF token in a header, which an attacker on another origin cannot read.
+
+The dashboard is unchanged by this and still mutates with a bearer token. That is the point of
+accepting *either*: the relaxation adds a way in for a cookie client without moving the existing
+one, so nothing already built has to be re-proved at the same time as the new path.
 
 **Failures are two different answers.** No usable session is `401` — sign in. A usable session
 without the role is `403` — signing in again will not help. Collapsing them would send a reviewer
@@ -33,6 +37,7 @@ from typing import Annotated, Final
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.security import CSRF_HEADER, csrf_token_matches
 from app.core.settings import Settings, get_settings
 from app.db.session import get_engine
 from app.identity.rbac import Forbidden, NotAuthenticated, Permission, authorize
@@ -78,16 +83,51 @@ def current_principal(
 ) -> Principal | None:
     """Who this request is, or `None`.
 
-    Reads the cookie first because that is how the dashboard calls; the bearer header is for a
-    script or a test. Deliberately no query parameter — see the module docstring.
+    **The bearer header wins over the cookie**, and `T-070a` is when that started to matter: once
+    sign-in issues a cookie, every browser caller has both, and a script sending an explicit
+    `Authorization` header would otherwise be answered as whoever the ambient cookie belongs to.
+    The explicit credential is the one the caller chose; the cookie is the one the browser
+    attached by itself. Found by `T-151a`'s sign-out test, which revoked the wrong session the
+    moment cookies existed.
+
+    This does not weaken CSRF: an attacker on another origin cannot make a browser send an
+    `Authorization` header, which is exactly why `requires_mutation` lets a bearer caller skip the
+    token check. Deliberately no query parameter — see the module docstring.
     """
-    token = mp_session or bearer_token(authorization)
+    token = bearer_token(authorization) or mp_session
     if token is None:
         return None
     return resolve(session, token)
 
 
 PrincipalDep = Annotated[Principal | None, Depends(current_principal)]
+
+#: Attribute naming the permission a dependency actually enforces (`T-162`).
+#:
+#: `ROUTE_PERMISSIONS` says what a route *declares*; this says what its code *runs*. They were two
+#: independent statements until now: a negative control on `T-069a` changed the table to the
+#: permission every role holds and every role was still refused, because the handler names its own
+#: permission in its signature and nothing compared the two. `tests/test_authz.py` now walks the
+#: real dependency tree and reads this — so a marker is not decoration, it is the only way the
+#: enforced answer is observable from outside the closure.
+ENFORCED_PERMISSION_ATTR: Final = "enforced_permission"
+
+
+def _marked[F: Callable[..., Principal]](dependency: F, permission: Permission) -> F:
+    """Tag a dependency with the permission it enforces, and hand it back unchanged."""
+    setattr(dependency, ENFORCED_PERMISSION_ATTR, permission)
+    return dependency
+
+
+def enforced_permission(call: object) -> Permission | None:
+    """The permission ``call`` enforces, or `None` if it enforces none.
+
+    Read through a function rather than by touching the attribute directly, so a test cannot
+    disagree with the producer about the name — and so "this dependency authorizes nothing"
+    is an answer rather than an `AttributeError`.
+    """
+    found = getattr(call, ENFORCED_PERMISSION_ATTR, None)
+    return found if isinstance(found, Permission) else None
 
 
 def requires(permission: Permission) -> Callable[[Principal | None], Principal]:
@@ -118,14 +158,26 @@ def requires(permission: Permission) -> Callable[[Principal | None], Principal]:
         assert principal is not None  # `authorize` raises for `None` on any real permission
         return principal
 
-    return dependency
+    return _marked(dependency, permission)
 
 
-def requires_bearer(permission: Permission) -> Callable[[Principal | None, str | None], Principal]:
-    """`requires`, plus a refusal of cookie-only authentication. For state-changing routes.
+def requires_mutation(
+    permission: Permission,
+) -> Callable[[Principal | None, str | None, str | None, str | None], Principal]:
+    """`requires`, plus CSRF protection. The dependency every state-changing route uses.
 
-    See the module docstring: this is CSRF exposure removed rather than mitigated, and it is
-    temporary. `T-070` adds real CSRF protection and this becomes a deliberate relaxation.
+    Two ways through, and the difference is which credential the browser attaches by itself:
+
+    * **A bearer token.** A browser never sends one unprompted, so a cross-site form post cannot
+      produce this request at all. Nothing further is required, and this is the path the dashboard
+      and every existing test take.
+    * **The session cookie plus a matching `X-CSRF-Token` header.** The browser does attach the
+      cookie by itself, so the header is what proves the request came from a page that could read
+      the CSRF cookie — same-origin policy, not trust.
+
+    A cookie with no header, or with the wrong one, is refused. `403` rather than `401`: the
+    caller *is* authenticated, and telling them to sign in again would send them round a loop that
+    cannot fix it (`T-063a`'s reason for keeping the two codes apart).
     """
 
     check = requires(permission)
@@ -133,17 +185,25 @@ def requires_bearer(permission: Permission) -> Callable[[Principal | None, str |
     def dependency(
         principal: PrincipalDep,
         authorization: Annotated[str | None, Header()] = None,
+        mp_session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+        x_csrf_token: Annotated[str | None, Header()] = None,
     ) -> Principal:
         resolved = check(principal)
-        if bearer_token(authorization) is None:
+        if bearer_token(authorization) is not None:
+            return resolved
+
+        # Cookie-authenticated. `mp_session` is not None here — `check` passed, and with no bearer
+        # token the cookie is the only thing `current_principal` could have resolved — but it is
+        # narrowed rather than asserted, because a future third credential must fail closed here
+        # instead of skipping the check.
+        if mp_session is None or not csrf_token_matches(mp_session, x_csrf_token):
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
-                    "state-changing requests need an Authorization: Bearer token. Cookie "
-                    "authentication is refused here until CSRF protection lands (T-070)."
+                    "state-changing requests authenticated by cookie must send a matching "
+                    f"{CSRF_HEADER} header (§15.1). A bearer token needs no CSRF token."
                 ),
-                headers={"WWW-Authenticate": "Bearer"},
             )
         return resolved
 
-    return dependency
+    return _marked(dependency, permission)

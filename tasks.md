@@ -8,12 +8,12 @@
 | **Project** | Matrix Power Always-On AI Sales Agent |
 | **Source specification** | `MATRIX_POWER_ALWAYS_ON_SALES_AGENT_SPEC_v0.3.md` (v0.3, dated 2026-07-27, status: *Approved architecture for buildout and shadow deployment; live outreach remains gated*) |
 | **Specification location** | `docs/MATRIX_POWER_ALWAYS_ON_SALES_AGENT_SPEC_v0.3.md` (repo-local; placed there by the user on 2026-07-27). SHA-256 `E571FC36420FEB7786AB2C984D24FDF0E100E89C6974E80F56C5D66173C57D9A`, 92,997 bytes. `MATRIX_POWER_NEMOCLAW_SALES_AGENT_SPEC_v0.2.md` is **SUPERSEDED** (spec §22) and is deliberately not vendored. |
-| **Current implementation stage** | **Stage 2 — Review dashboard** (spec §19.6), entered 2026-07-31. Stage 1 is complete: the import→membership→eligibility→evidence→qualification→draft→validated-revision pipeline runs end to end through the worker on synthetic fixtures with zero external writes — see [docs/stage1-exit-evidence.md](docs/stage1-exit-evidence.md). The dashboard now has sign-in, the review card, and all five §12.3 item 6 actions live (127 frontend tests). |
+| **Current implementation stage** | **Stage 2 — Review dashboard** (spec §19.6), entered 2026-07-31. Stage 1 is complete: the import→membership→eligibility→evidence→qualification→draft→validated-revision pipeline runs end to end through the worker on synthetic fixtures with zero external writes — see [docs/stage1-exit-evidence.md](docs/stage1-exit-evidence.md). The dashboard now has sign-in, the review card, all five §12.3 item 6 actions, and the §7.5 attention page at `/attention` where a reviewer sees stale approvals with the record that made them stale and revokes one. Navigation is complete for what exists: the entry page links the review queue at `/review` and the attention list, and every queue row opens its card. `T-070a` landed §15.1's cookie and CSRF controls on the backend: sign-in issues an `HttpOnly`/`SameSite`/`Secure` session cookie, and every state-changing route refuses a cookie that does not echo a matching CSRF token. `T-070c` then proved the fourth clause and made a future violation fail: a fail-closed AST walk refuses any mutating handler that roots an actor anywhere but the resolved session. `T-069a` added the administrator-only operations read at `GET /api/operations/overview` — shadow mode, the flags in force, and the §17.5 counters this repository has rows for. `T-069b` added the §17.6 switches over HTTP under `PAUSE_SYSTEM` — global pause, shadow mode, and outbound-email disable, each audited in both directions and provably unable to *start* anything. `T-069c` completed that epic with the `/operations` panel — shadow mode stated first, dead jobs with their reasons, and the switches each requiring a typed reason. The dashboard now has sign-in, the review queue, the review card with all five §12.3 item 6 actions, the attention list, and the operations panel, all linked from the entry page. `T-007` then landed the CI pipeline: every push runs the §2 command list and both alembic checks against a real `postgres:16`, with `contents: read`, no secret, and no external write — `T-163` added the dashboard job — lint, typecheck, the dashboard suite, and a build on a pinned Node — so every push now checks both halves of the repository. `T-161` closed §17.5's last unmeasured number: a §11.4 suppression refusal now records the scope that matched — a category, never an address (§15.5) — and the operations overview counts the attempts from the audit trail instead of reporting `null`. `T-152` cleared the dependency advisories: `npm audit --audit-level=high` is clean, with `postcss` and `sharp` raised by override because `npm audit fix` proposed a five-major `next` downgrade. **What remains in Stage 2 is three things, none of them startable by this loop: **`T-172`** (no entry point registers the Stage 1 fixture adapters, `BLOCKED` on the decision in [ADR-027](docs/adr/ADR-027-where-a-development-process-may-register-the-fixture-source-adapter.md)), `T-070b` (reauthentication, `BLOCKED` on `Q-026`), and `T-071`'s exit rehearsal for gate **G-10**, which waits on both.** Stage 1 still has open work: `T-144` was also found actionable in `PLANNED`, and is now `DONE`: a contact records the import batch it came from, and §10.1's **approved-source-basis** rule runs against it, failing closed when a candidate has no contact, no recorded batch, or a source type §9.3 has not approved (`csv` is the only one). Six of §10.1's eight stage-1 checks are now enforced; the two that remain need a CRM (`Q-001`, **G-05**) and a confirmed ICP (`Q-002`). `T-164a` brought the CI action pins current, each input verified against that version's own `action.yml`. **`T-071` is now `SPLIT`**, and preparing its walkthrough found that nothing imported the synthetic prospects into a real database — a non-engineer could not reach a review queue at all. `T-168` closed that with `python -m app.cli import_prospects`, so the setup path is now `seed_synthetic` → `start_campaign` → `import_prospects` → `grant_local_reviewer` → `python -m app.worker` → review, and `T-173` moved the shadow slice onto the same production enqueue so there is one definition of it. **Running that path for real found two more holes**, both filed rather than absorbed: no user held any role, so a valid session saw `403` everywhere (`T-170`, `DONE`), and importing prospects created **no candidates** because the membership enqueue lived only in `tests/test_shadow_slice.py` (`T-169`, now `DONE` — `app/intake.py` enqueues membership work, so candidates exist and the worker advances them). `T-171` then added `start_campaign <slug>`, the operator act §17.6 requires, and the setup order is now seed → **start** → import → drain — a membership job is consumed once, so starting a campaign after importing produces nothing. **`T-172` is `BLOCKED` on an architecture decision:** no entry point registers the Stage 1 fixture adapters, so every research job dead-letters, and two invariants refuse every shape of the fix — nothing under `app/` may register a source adapter, and nothing may import `app.worker`. `T-071a` waits on that decision. Stage 1 still has open work, though: `T-136` was found sitting in `PLANNED` long after its blocker closed, and is now `DONE` through `T-136a`, `T-136b`, and `T-136c`. Every approver the seeder or the shared factory names is a real `app_user`, and **all five** approver columns outside `audit_event` are foreign keys to `app_user.email` with `RESTRICT` ([ADR-024](docs/adr/ADR-024-approver-columns-reference-a-user-by-email.md)) — an approver can no longer be a typo, and one with history cannot be deleted. [ADR-025](docs/adr/ADR-025-actor-columns-record-an-actor-not-a-user.md) (`T-166`) settled the other side: the columns that can name a service or the system stay strings holding an `Actor` and take no key, with the reason recorded beside each one, and [ADR-026](docs/adr/ADR-026-who-acted-is-recorded-twice-and-the-rule-is-where-the-value-travels.md) (`T-167`) records why a human is a UUID there and an email on an approval: the actor id reaches log lines and §15.5 wants contacts redacted. **Suite sizes are deliberately not quoted here** (`T-176`): a current-state summary that carries point-in-time numbers is stale the moment the next test lands, so they live in each task's completion evidence and in the exit-evidence documents, which date them. |
 | **Current stage exit gate** | **G-10** — a non-engineer completes reviews without understanding the agent stack. (**G-02**, the Stage 1 exit, is **OPEN** as of 2026-07-31.) |
-| **Last updated** | 2026-07-31 |
-| **Next recommended `READY` task** | **`T-157` — the approval transaction pins no version, so two §8.4 triggers can never fire** (P1). Confirmed by the 2026-07-31 checkpoint as its only HIGH finding and linked to gate **G-10**. (`T-068b` — promoted by the audit — `T-137` residual, `T-152`, `T-135`, and `T-007` are also `READY`; `T-158` is `BLOCKED` on a user commit decision.) |
+| **Last updated** | 2026-08-01 |
+| **Next recommended `READY` task** | **nothing this loop can start.** `T-182` closed 2026-08-01 (`AGENTS.md`'s reserved-domain rule is now enforced by a test, over every file the repository carries — the `SYNTHETIC-` half was already held by `tests/test_fixtures.py`). `T-181` closed 2026-08-01 (the last task block ran to end-of-file and held two whole sections; latent, and now bounded). `T-180` closed 2026-08-01 (`R-003` and `R-005` revisited and `CLOSED`; a test now fails if an `OPEN` record waits on a trigger that has already landed). `docs/reconciliation.md` has no overdue revisit left, and the ledger's own integrity checks — header, census, ADR index, reconciliation — are all green, so the remaining `READY` tasks are the two that are not worth starting. Two older tasks are `READY` and neither is worth starting (`T-177`). `T-165` is `READY` with nothing to do (`next@latest` still `16.2.12`). **`T-094`** (`FakeCRMAdapter` plus the internal shadow-mode repository, §8) is `READY` with no gate and both dependencies `DONE`, but its only consumer is `Rule.EXISTING_RELATIONSHIP` — that is `T-143`, `BLOCKED` on **G-05** — and the suppression half is already served directly by `find_suppression`, so building it today is an interface with one implementation and no call site. The one decision that changes the picture is **[ADR-027](docs/adr/ADR-027-where-a-development-process-may-register-the-fixture-source-adapter.md)** (`PROPOSED`), **corrected 2026-08-01 by `T-175`**: option (b) is not free — it amends the two adapter invariants that name the CLI in their docstrings and forbid it in their walks. It is still the recommendation, because that amendment makes a test agree with its own rationale where (a) creates an exception the rationale never contemplated. Accepting an option unblocks `T-172` → `T-071a` → gate **G-10**. A §8 row is startable only when its **stage heading**, its **depends** column, and its **note** all allow it: `T-102` had an explicit "implementable before **G-07**" exemption and became `T-102a`/`T-102b` (`T-102a` `DONE` 2026-08-01); `T-090` reads like another but its depends column still names **G-10**. `T-164b` needs a push (the whole workflow was dry-run locally 2026-08-01 and passed, so the usual first-run failures are ruled out; see its block); `T-071b` needs a non-engineer and `Q-026`. |
 | **`IN_PROGRESS` task** | *none* |
-| **Latest checkpoint** | [docs/checkpoints/2026-07-31_stage2_checkpoint.md](docs/checkpoints/2026-07-31_stage2_checkpoint.md) — **PASS_WITH_ACTIONS** (2026-07-31). Baseline: commit `62514a4904cc` + full working tree. Open audit tasks: `T-157` (HIGH, gate-linked), `T-158` (BLOCKED on user commit authorization). Audit annotations on `T-137`, `T-152`, gate **G-10**. |
+| **Latest checkpoint** | [docs/checkpoints/2026-07-31_stage2_checkpoint.md](docs/checkpoints/2026-07-31_stage2_checkpoint.md) — **PASS_WITH_ACTIONS** (2026-07-31). Baseline: commit `62514a4904cc` + full working tree. Both audit tasks are now closed: `T-157` (HIGH, gate-linked) `DONE` 2026-07-31; `T-158` resolved by the user's own commit `3f07e60`. Audit annotations on `T-137`, `T-152`, gate **G-10**. |
 
 > ⚠️ **LIVE OUTREACH IS GATED.** No email send, no message send, no CRM mutation, no production
 > credential, no deployment, no LinkedIn automation, and no autonomous follow-up may occur until the
@@ -65,6 +65,14 @@ Canonical verification commands (available after `T-002`/`T-006`):
 
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest -q
+```
+
+The dashboard's equivalent, available after `T-060a` (`T-163`). CI runs both lists, and
+`backend/tests/test_ci_workflow.py` reads them out of **this section** — so a command added here
+and not to `.github/workflows/ci.yml` fails the suite rather than quietly running only locally:
+
+```bash
+cd frontend && npm run lint && npm run typecheck && npm run test && npm run build
 ```
 
 ---
@@ -175,7 +183,8 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
 
 #### T-136 — Convert approver columns to foreign keys once the user table exists
 - **Stage / Priority:** 1 / P2
-- **Status:** `PLANNED`
+- **Status:** `DONE` (2026-08-01) — reconciled from `SPLIT` when `T-136c`, its last child, closed. The split note below is kept.
+- **Split note (2026-08-01):** **Promoted out of `PLANNED` first — the ledger had drifted.** Its own blocker line says "waits on `T-012` only", and `T-012` closed 2026-07-31, so it had been actionable and unlabelled since. Preflight then measured the sweep and it is not one reviewable change set: **thirteen** actor-bearing columns across nine modules, **79** approver references across eighteen test files, and a `World` factory that creates no `app_user` row at all. Worse, the production writer stores `principal.user.email` while the seeder stores `SYNTHETIC-approver`, so *no existing value can be resolved to a user row today* — a foreign key added now would have nothing to point at. Split on that fact, in the order a production migration would run: make the data referentially valid, then add the constraint that requires it. **`T-136a`** — every approver the seeder and the shared factory name exists as a real `app_user` row, and the strings they write are that user's email; no schema change. **`T-136b`** — `product_status_version.approved_by`, `approved_claim.approved_by`, `approved_claim_set.approved_by`, and `campaign_policy_version.approved_by` become foreign keys with `ondelete="RESTRICT"`, with the migration that maps existing values by email. **`T-136c`** — `approval.approver_id`, held back on its own because it is the one with an HTTP surface: the dashboard renders it, so it carries the typed-contract chain and a frontend change. Criterion 1 of the parent is met when `T-136c` closes; the `audit_event.actor_id` exclusion in Scope (out) is unchanged and applies to all three. **Not covered by any child, deliberately:** `operational_flag.set_by`, `record_version.created_by`, `campaign_decision.decided_by`, `user_session.revoked_by`, `suppression.lifted_by`, and the two `granted_by` columns in `identity` can all hold a *system* actor (`"dispatcher"`, `"system"`) that has no user row and must not be invented one. Whether those become nullable foreign keys or stay strings for the same reason `audit_event.actor_id` does is a design question, filed as **`T-166`** rather than answered here.
 - **Depends on:** T-012, T-013
 - **Spec:** §14.4 (`approved_by`), §12.2 (immutable actor attribution), §15.1
 - **Objective:** Replace identity *strings* with real foreign keys to `user`, so an approver cannot be a typo and cannot be deleted out from under the record that depends on them.
@@ -188,11 +197,134 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
 - **Verification:** `uv run alembic upgrade head`/`downgrade`; `uv run pytest -q`
 - **Files:** `backend/app/products_and_claims/models.py`, a new migration, affected tests
 - **Blocker / Q:** none — waits on `T-012` only.
-- **Completion evidence:** —
+- **Completion evidence:** the three children above.
 
+#### T-136a — Every approver named in the database is a real user
+- **Stage / Priority:** 1 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-012
+- **Spec:** §12.2 (immutable actor attribution), §14.4
+- **Why this is first:** `T-136b`'s foreign key has nothing to point at until it is true. The seeder writes `SYNTHETIC-approver`, the shared test factory writes `approver-1`, and the production path writes `principal.user.email` — three vocabularies for one concept, none of which resolves to an `app_user` row. Adding the constraint before fixing the data is the migration that fails on every developer's database at once.
+- **Objective:** Every approver value the seeder and the shared factory write is the email of an `app_user` row that exists.
+- **Scope (in):** `app/fixtures/synthetic.py` creating (or reusing) the seed approver as an `app_user` and naming it by that user's email; `tests/factories.py` doing the same for `World`; a test that resolves **every distinct approver value in a seeded database** to a user, so the property is checked rather than assumed.
+- **Scope (out):** Any schema change, any migration, any foreign key — those are `T-136b`/`T-136c`. Arbitrary approver literals in individual test files (`"approver-1"` appears in eighteen of them): they are unconstrained until the foreign key lands, and rewriting them now would be a 79-site diff proving nothing.
+- **Acceptance criteria:**
+  1. Seeding produces an `app_user` for the approver it names, and seeding twice does not produce two; test-proven.
+  2. Every distinct approver value written by the seeder resolves to an `app_user.email`; test-proven by a query over the seeded database rather than by inspecting the constant.
+  3. The synthetic fixture rules still hold: the `SYNTHETIC-` prefix and an IANA reserved domain (AGENTS.md rule 1).
+- **Verification:** `uv run pytest -q tests/test_fixtures.py tests/test_identity.py`
+- **Files:** `backend/app/fixtures/synthetic.py`, `backend/tests/factories.py`, `backend/tests/test_fixtures.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `SEED_APPROVER` became `synthetic-approver@example.invalid` and `APPROVER` became `synthetic-world-approver@example.invalid` — **emails**, because the value that will map to a user row is the email, which is also what the production path already writes (`principal.user.email`). `.invalid` is IANA-reserved and can never be delivered to (AGENTS.md rule 1). `seed_synthetic` creates the user before anything writes `approved_by`; `tests/factories.World` does the same through `approver_user`, a get-or-create because `app_user.email` is unique and more than one test builds two worlds in one transaction.
+  - `seed_approver(session)` is a function rather than an inline query, because `T-136b` needs exactly this resolution — approver string to user row — in its migration *and* in every writer, and one definition is what stops those two disagreeing.
+  - Criterion 1 — `tests/test_fixtures.py::test_seeding_creates_the_approver_as_a_real_user` (asserting the user is absent *before* the seed, so the test cannot pass against a database that already had one) and `::test_seeding_twice_does_not_create_a_second_approver`.
+  - Criterion 2 — `::test_every_approver_the_seed_writes_resolves_to_a_user` reads the four approver columns **out of the seeded database** and subtracts the set of known user emails. Reading `SEED_APPROVER` back would have proven only that the constant equals itself; the control below shows the difference. `::test_the_shared_factory_names_an_approver_that_resolves_too` applies the same property to `World`, which would otherwise be untested scope — with no foreign key yet, a factory that stopped creating its user breaks nothing until `T-136b`, which is exactly the gap that makes a later migration fail on somebody else's branch.
+  - Criterion 3 — `::test_the_seeded_approver_is_unmistakably_synthetic` pins the reserved domain, the word `synthetic` in the address, and the `SYNTHETIC-` prefix on the display name (the email cannot carry it: `app_user` requires the address lowercase).
+  - Negative controls — **five, each bit and each restored green**: the seeder creating no user → 4 failed; **a writer recording somebody else while the constant stayed correct → 1 failed**, which is the proof the resolution test is not a tautology; the resolution helper always missing → 4 failed; a deliverable `@example.com` domain → 1 failed; the shared factory creating no user → 1 failed. The writer control first tripped the script's own uniqueness assertion — `approved_by=SEED_APPROVER` occurs four times in the seeder — and was re-anchored rather than allowed to land on whichever came first.
+  - `uv run pytest -q` → **2203 passed** (2198 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, so no migration and no contract regeneration; the frontend is untouched. About eighty literal `"approver-1"` strings in individual test files are deliberately left alone — nothing constrains them until the foreign key lands, and `T-136b` owns that sweep.
+
+#### T-136b — Product and claim approver columns become foreign keys
+- **Stage / Priority:** 1 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-136a
+- **Spec:** §14.4 (`approved_by`), §12.2, §15.1
+- **Objective:** `product_status_version.approved_by`, `approved_claim.approved_by`, `approved_claim_set.approved_by`, and `campaign_policy_version.approved_by` are foreign keys to `app_user`, and an approver with history cannot be deleted.
+- **Scope (in):** The four columns; a migration mapping existing values by email and refusing loudly rather than nulling attribution when a value has no user (§12.2 — silently dropping an approver is worse than a failed migration); `ondelete="RESTRICT"`; the sweep of test call sites the constraint forces.
+- **Scope (out):** `approval.approver_id` (`T-136c`), `audit_event.actor_id` (parent Scope out), the system-actor columns (`T-166`).
+- **Acceptance criteria:**
+  1. All four columns are foreign keys to `app_user`.
+  2. Deleting a user who approved something is refused; test-proven.
+  3. `alembic check` clean and the migration reverses (`downgrade -1` / `upgrade head`).
+- **Verification:** `uv run alembic downgrade -1 && uv run alembic upgrade head && uv run alembic check`; `uv run pytest -q`
+- **Files:** `backend/app/products_and_claims/models.py`, `backend/app/products_and_claims/claim_models.py`, `backend/app/campaigns/models.py`, a new migration, affected tests
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **The key targets `app_user.email`, not `app_user.id` — recorded as [ADR-024](docs/adr/ADR-024-approver-columns-reference-a-user-by-email.md).** `T-136`'s wording implies a surrogate key, but both goals it names — an approver cannot be a typo, an approver with history cannot be deleted — hold on any unique column, and `email` is already `UNIQUE NOT NULL`. Choosing it keeps the row readable without a join (the same reason `audit_event.actor_id` stays a string), matches what the review API already writes (`principal.user.email`), and leaves `T-136c`'s §11.4 comparison against `send_command.record_versions["approver_id"]` string-to-string rather than UUID-versus-JSON-text. `ON UPDATE CASCADE` is the price of a natural key and is deliberate.
+  - Criterion 1 — `tests/test_approver_identity.py::test_the_approver_column_is_a_foreign_key_to_a_user`, parametrized over all four tables and read **out of the live schema** rather than off the model, because the suite builds from migrations and a model attribute nobody migrated would be a lie.
+  - Criterion 2 — `::test_the_approver_foreign_key_restricts_deletion` reads `confdeltype` from `pg_constraint` for each of the four (a key created with `CASCADE` would otherwise pass every other check), `::test_deleting_a_user_who_approved_something_is_refused`, and `::test_every_approver_column_holds_the_key_open`, which populates all four columns before one delete attempt and asserts each was populated first — a delete refused because a table was empty would prove nothing. `::test_an_unknown_approver_is_refused` covers the typo case that is the reason the task exists.
+  - Criterion 3 — `alembic downgrade -1` → `upgrade head` → `check` → `No new upgrade operations detected.`
+  - **The migration refuses rather than nulls.** A database seeded before `T-136a` holds approver strings matching no user; §12.2 forbids deleting attribution to make a schema change convenient, so `_refuse_unresolvable_approvers` stops and names the rows and the fix. **The control that removed it did not bite** — a test database is always empty, so nothing exercised it. Treated as a finding: the query moved into `unresolvable_approvers(connection)` so `::test_the_migration_refuses_an_approver_it_cannot_resolve` can drop the constraint inside its own transaction, write the row the constraint forbids, and ask; `::test_the_migration_check_is_quiet_when_every_approver_resolves` is the other half; and `::test_the_migration_runs_the_check_before_it_adds_the_constraints` is an AST walk over `upgrade()`, because the *call* still had nothing holding it. The control bites now.
+  - **The test sweep the constraint forced, and one safety bug it surfaced.** Forty `approved_by="owner-1"`-style literals became the well-known synthetic identities, kept **distinct** because several tests turn on a *second* approver publishing the next version; two helper defaults and two shadowing local `APPROVER` constants followed. The `db_session` fixture seeds those identities — and then clears the outbox guard's bookkeeping, because writing users counts as a business state change and would otherwise have made `commit_with_outbox`'s §17.2 pairing check pass for **every test in the suite**. Two tests in `test_outbox.py` caught it immediately. Three user-count assertions became deltas or specific lookups, and `test_decision_api::test_the_actor_comes_from_the_session` stopped identifying the reviewer as `order_by(created_at.desc()).first()` — `created_at` defaults to `now()`, the *transaction* start time, so every row in that test shared one timestamp and the ordering was never real.
+  - Negative controls — **five, each bit and each restored green**, all against the **migration** rather than the models, since the schema under test comes from migrations: one column's key dropped → 2 failed, naming that table and no other; `RESTRICT` changed to `CASCADE` → 5 failed; the pre-flight call removed → 1 failed (after the gap above was closed); the fixture no longer clearing the outbox bookkeeping → 2 failed.
+  - `uv run pytest -q` → **2217 passed** (2203 before); `ruff check`, `ruff format --check`, `mypy app` clean. No route changed, so no contract regeneration; the frontend is untouched.
+
+#### T-136c — The approval's approver becomes a foreign key
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-136b
+- **Spec:** §14.4, §12.2, §11.4
+- **Why it is separate:** `approval.approver_id` is the only one of these columns with an HTTP surface. The review API writes `principal.user.email` and the dashboard renders the approver, so this child carries the typed-contract chain (`export_openapi` → `generate:api` → `tests/test_fixtures.py`) and a frontend change, which is the established layer boundary for splitting.
+- **Objective:** An approval names a user row, not a string that could be a typo.
+- **Scope (in):** The column, its migration, the writer in `outreach_and_replies/api.py`, `send_command.record_versions["approver_id"]` (which §11.4 compares at dispatch — the recheck must compare the same kind of value on both sides), the contract chain, and the dashboard.
+- **Scope (out):** Everything the other children own.
+- **Acceptance criteria:**
+  1. `approval.approver_id` is a foreign key to `app_user`; deleting an approver with an approval is refused.
+  2. The §11.4 approver-authority recheck still refuses a changed approver; test-proven with the new value kind.
+  3. `alembic check` clean, the migration reverses, and the regenerated contract matches.
+- **Verification:** `uv run pytest -q tests/test_preconditions.py tests/test_approval.py tests/test_fixtures.py`; `npm run test`
+- **Files:** `backend/app/drafts_and_approvals/approval.py`, `backend/app/outreach_and_replies/api.py`, a new migration, `frontend/openapi.json`, `frontend/lib/api-types.ts`, affected tests
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `approval.approver_id` is a foreign key to `app_user.email` with `RESTRICT`/`ON UPDATE CASCADE`, migration `d83b2f16c907`, same shape and same refusal as `c41d7b90ae52` ([ADR-024](docs/adr/ADR-024-approver-columns-reference-a-user-by-email.md)). **No writer changed**: `outreach_and_replies/api.py` already recorded `principal.user.email`, which is precisely why ADR-024 chose the email — the surrogate-key alternative would have meant changing every writer in the same change set that adds the constraint.
+  - Criterion 1 — `tests/test_approver_identity.py::test_the_approver_column_is_a_foreign_key_to_a_user[approval]` and `::test_the_approver_foreign_key_restricts_deletion[approval]`, read out of the live schema and `pg_constraint` rather than off the model. `::test_an_approval_cannot_name_an_approver_who_is_not_a_user` covers the typo case on the column a reviewer's decision actually lands in, and `::test_deleting_a_user_who_holds_an_approval_is_refused` the delete. That one approves as **`OWNER_TWO`**, not `APPROVER`: with `APPROVER` the `campaign_policy_version` key refuses first, and the test would have passed without the approval column ever being consulted.
+  - Criterion 2 — the §11.4 approver-authority recheck is unchanged and still refuses a changed approver (`tests/test_preconditions.py::test_a_different_approver_than_the_one_recorded_is_refused`), because both sides stayed strings. The `points-at-the-id` control below is the proof that mattered: repointing the key at `app_user.id` did not merely fail a schema assertion, it made the migration unrunnable (`4 passed, 61 errors`) — the concrete form of the trade ADR-024 records.
+  - Criterion 3 — `alembic downgrade -1` → `upgrade head` → `check` → `No new upgrade operations detected.` The contract chain ran (`export_openapi`, `generate:api`) and produced **no change**: a foreign key does not alter the OpenAPI type, `approver_id` stays a string, and the dashboard's `AttentionList` renders it unchanged. `tests/test_fixtures.py::test_the_committed_openapi_document_matches_the_application` and `frontend/tests/api-types.test.ts` both pass, so the no-op is asserted rather than assumed.
+  - Nineteen `approver_id="approver-1"` literals across six files became `APPROVER`, and the two `"approver-2"` sites `OWNER_TWO`. The `"somebody-else"` value in `test_approval_transaction.py` is deliberately untouched: it is a *request body*, and the point of that test is that the request's claim is ignored in favour of the session's user (`T-070c`).
+  - Negative controls — **four, each bit and each restored green**: the constraint never created → 5 failed; `RESTRICT` → `CASCADE` → 2 failed; the pre-flight call removed → 1 failed (the AST walk, now parametrized over both migrations); the key repointed at `app_user.id` → the migration itself fails and 61 tests error.
+  - `uv run pytest -q` → **2224 passed** (2217 before); `npm run test` → **185 passed**; `npm run typecheck`, `ruff check`, `ruff format --check`, `mypy app` clean.
+
+#### T-166 — Decide whether system-actor columns become nullable foreign keys or stay strings
+- **Stage / Priority:** 2 / P3
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** §12.2 (immutable actor attribution), §17.5
+- **Found by:** `T-136`'s split. Seven columns hold an actor that is sometimes a person and sometimes the system: `operational_flag.set_by`, `record_version.created_by`, `campaign_decision.decided_by` (which already carries a companion `decided_by_type`), `user_session.revoked_by`, `suppression.lifted_by`, and both `granted_by` columns in `identity`. A `"dispatcher"` or `"system"` value has no user row and must not be invented one, so none of them can take the same foreign key the approver columns will.
+- **Why it matters:** left undecided, each column gets settled by whoever next touches it, and the repository ends with two answers to the same question. `audit_event.actor_id` already has a *recorded* answer — it stays a string so the trail survives the user record — and these seven need the same treatment either way.
+- **Objective:** One recorded decision covering all seven, applied or explicitly deferred.
+- **Scope (in):** An ADR weighing a nullable foreign key plus a type discriminator (the shape `campaign_decision` already uses) against the `audit_event` precedent; whichever it chooses, applied to all seven or recorded as deliberately not applied, with the reason on each column.
+- **Scope (out):** Changing what any of these columns *mean*; the approver columns, which `T-136b`/`T-136c` own.
+- **Acceptance criteria:**
+  1. An ADR under `docs/adr/` records the decision and the rejected alternative.
+  2. Every one of the seven columns either matches the decision or carries the reason it does not.
+- **Verification:** `uv run pytest -q`; the ADR index check in `tests/test_docs.py` if it covers ADR numbering.
+- **Files:** `docs/adr/`, `docs/adr/README.md`, and whichever models the decision touches
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **[ADR-025](docs/adr/ADR-025-actor-columns-record-an-actor-not-a-user.md): they stay strings, and they record an `Actor` — a `(type, id)` pair — not a user.** Three reasons, and the first is the one that decided it: a nullable foreign key would constrain only the *human* branch, while the failure worth preventing is a system actor written where a person was required — and a nullable key is satisfied by `NULL`, which is that failure written down. It would also split "who did this" across a key and a discriminator that application code has to keep agreeing, the same fail-open shape this repository has twice deleted; and `audit_event.actor_id` stays a string regardless (§12.2), so keying the rows would leave the trail and the row it describes in different shapes.
+  - Criterion 1 — the ADR records the decision, the rejected nullable-key-plus-discriminator shape, a second rejected option (making every actor a user row, which would mean inventing a person called `dispatcher`), and a revisit trigger tied to `Q-026`/`T-061b`.
+  - Criterion 2 — all seven columns now name ADR-025 beside the definition, proven by `tests/test_actor_columns.py::test_the_column_says_which_decision_governs_it`, parametrized per table. `record_version.created_by` is declared once on the `VersionedArtefact` mixin and inherited by four tables, all four of which are checked so the *table* is asserted and not only the source line. `::test_the_column_takes_no_foreign_key` asserts the decision against the **mapping** rather than the prose — a later change adding the rejected key would otherwise land with the comment still saying it was rejected, which is worse than no comment — and `audit_event.actor_id`, the precedent, is included in that walk. `::test_the_check_can_fail` proves the detector fires by pointing it at `Approval.approver_id`, which is keyed (ADR-024) and carries no ADR-025 comment.
+  - **Two stale pointers retired.** `message_revision.created_by` and `send_command.actor_id` still read "identity string until T-012; T-136 converts it" after `T-136` closed **without** converting them — the comment described a plan that no longer existed. Both are actor columns by ADR-025's own reasoning (a revision is authored by the model gateway as often as by a reviewer; the dispatcher orders a send as legitimately as a person), so both were annotated and added to the walk. Recorded here rather than absorbed silently: they were not in this task's seven.
+  - **Finding, filed not fixed:** a human is written into these columns as `str(user.id)` — a UUID — because `Principal.actor` produces it, while ADR-024 keys the approver columns on the **email**. Two vocabularies for one concept, so correlating an approval with the audit events around it needs a join nobody should have to make. Filed as **`T-167`**; unifying them means touching every actor writer and is not this decision's subject.
+  - Negative controls — **four, each bit and each restored green**: the decision removed from one column → 1 failed, naming that column; a rejected foreign key added while the comment still said it was rejected → 1 failed; the decision pushed nine lines above its column → 4 failed (the window is deliberately narrow — a decision a reader has to scroll for is one they will not see); the ADR written but never indexed → 1 failed. The foreign-key control **first errored at collection** rather than failing, because it put a `ForeignKey` in a module that does not import one — a bite, but not proof the detector fires, so it was re-aimed at `identity/models.py`.
+  - `uv run pytest -q` → **2251 passed** (2224 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, so no migration; no route change, so no contract regeneration; the frontend is untouched.
+
+#### T-167 — A human is a UUID in actor columns and an email in approver columns
+- **Stage / Priority:** 2 / P3
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-136c, T-166
+- **Spec:** §12.2 (immutable actor attribution), §17.5
+- **Found by:** `T-166`, reading what the columns actually hold. `Principal.actor` returns `Actor(type=HUMAN, id=str(user.id))`, so every actor column records a human as a **UUID**; [ADR-024](docs/adr/ADR-024-approver-columns-reference-a-user-by-email.md) keys the approver columns on the **email**. Both are deliberate in isolation and inconsistent together.
+- **Why it matters:** the same person appears twice in one story — as an email on the approval, as a UUID on the audit events around it — and correlating them needs a join a reviewer should not have to make. It is also the shape that invites a future writer to record the wrong one, which no constraint would catch: both are strings.
+- **Objective:** One vocabulary for "which human", or a recorded reason for two.
+- **Scope (in):** Deciding between them (the email reads better and is already keyed; the UUID is stable across an address change and is what `Actor` produces); whichever wins, applied to `Principal.actor` and every actor writer, or recorded in an ADR as a deliberate two-vocabulary design with the mapping documented where a reader will look.
+- **Scope (out):** Changing which columns carry a foreign key — ADR-024 and ADR-025 settled that. Service and system actors, which have no email and are unaffected either way.
+- **Acceptance criteria:**
+  1. A human is recorded the same way everywhere, or an ADR records why not.
+  2. If unified, `tests/test_actor_columns.py` gains a check that the two never diverge again; test-proven.
+- **Verification:** `uv run pytest -q`
+- **Files:** `backend/app/identity/sessions.py`, the actor writers, `docs/adr/`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **[ADR-026](docs/adr/ADR-026-who-acted-is-recorded-twice-and-the-rule-is-where-the-value-travels.md): two vocabularies, deliberately, and the rule is *where the value travels*.** The actor id is opaque (`str(user.id)`) because it flows into the audit trail and is the field most likely to be logged; the approver is the email because it is a narrow business record a reviewer reads and ADR-024 keys it. Criterion 1 is met by its second branch — recorded, not unified — and the reason is specific rather than a shrug.
+  - **Unifying on the email was the tempting answer and preflight showed it is the unsafe one.** It is a one-line change (`Principal.actor` is the only place a human actor is constructed, and only five test assertions compare to `str(user.id)`), so feasibility was never the obstacle. The obstacle is §15.5: contacts are to be redacted from logs, `campaigns/approval.py` logs `actor_type=actor.type.value` and never the id, and that is only safe *because* the id is opaque. Making it an address turns the next `log.info(..., actor_id=actor.id)` — a natural thing to write — into a violation nobody notices.
+  - **Unifying on the UUID was rejected too**: the five approver columns are keyed on `app_user.email`, so it means a migration one cycle after ADR-024, and an approval reading `9b47ff3d-…` instead of a name is worse for the person who has to check it.
+  - Criterion 2's if-clause does not bind, but the protection it asks for was built anyway, because a rule with nothing holding it is folklore: `tests/test_actor_columns.py::test_the_actor_vocabulary_is_an_opaque_id` asserts the actor id parses as a UUID **and contains no `@`** — the second assertion is the one a future one-line change would break; `::test_the_approver_vocabulary_is_the_email` asserts the other side resolves to an `app_user.email`; `::test_the_route_that_approves_writes_the_approver_vocabulary` pins the choice structurally at the one place both are in scope; and `::test_the_two_vocabularies_describe_the_same_person` writes the join down once so its cost is visible rather than folklore. The rule is also stated on `Principal.actor` itself, where a reader is standing.
+  - Negative controls — **three, each bit and each restored green**: the actor id changed to `self.user.email` → 2 failed; the approving route switched to `principal.actor.id` → 1 failed; the ADR left out of the index → 1 failed. The index control **did not bite on its first attempt** — it rewrote only the link text and left the literal `ADR-026` in the file, so the substring check still passed. The control was defective, not the test, and was re-aimed at the whole row.
+  - `uv run pytest -q` → **2255 passed** (2251 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, no migration, no route change, no contract regeneration; the frontend is untouched.
 #### T-137 — Approval revocation entry point
 - **Stage / Priority:** 1 / P1
-- **Status:** `READY`
+- **Status:** `DONE` (2026-07-31)
 - **Depends on:** T-021, T-033
 - **Spec:** §17.6 ("Revoke an approval"), §8.4 (approval invalidation)
 - **Objective:** An operator can revoke a specific approval so nothing already approved can still be acted on, recorded with actor and reason.
@@ -206,12 +338,18 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
 - **Files:** `backend/app/drafts_and_approvals/approval.py`, `backend/tests/test_approval.py`
 - **Blocker / Q:** none
 - **Checkpoint note (2026-07-31):** Most of this scope now exists via `T-021` (`approval.revoke()`, actor + reason + audit event) and `T-068a` (`POST /api/review/approvals/{approval_id}/revoke`, non-dispatchability proven at `require_valid`). **Residual scope only:** (a) the *function* accepts a blank reason — only the HTTP schema refuses one — so criterion 2 is not enforced at the entry point; (b) revoking a terminal approval surfaces as `IllegalTransition` rather than a domain refusal at the entry point. Do not rebuild what exists; close the two gaps and mark the overlap in evidence.
-- **Completion evidence:** —
+- **Completion evidence (2026-07-31):**
+  - Implemented as the checkpoint note scoped it — the two gaps only. `revoke()` in `app/drafts_and_approvals/approval.py` gained two refusals ahead of the transition, and two `ApprovalError` subclasses to carry them: `RevocationNeedsReason` and `ApprovalAlreadyClosed`. No new `revoke_approval()` name was introduced: `revoke()` is already the entry point every caller uses, and a second one would be two doors onto the same rule.
+  - **Overlap declared:** criterion 1 was already satisfied before this cycle by `T-021`'s `require_valid` and `T-068a`'s end-to-end proof (`tests/test_approval_lifecycle.py::test_a_revoked_approval_cannot_dispatch`, `::test_a_revoked_approval_still_cannot_dispatch`). `tests/test_approval.py::test_a_revoked_approval_authorizes_nothing` restates it where this task's named verification looks; it is inherited coverage, not new proof, and no control targets it.
+  - Criterion 2 — `::test_a_revocation_without_a_reason_is_refused`, `::test_a_whitespace_only_reason_is_not_a_reason` (four blank shapes), and `::test_a_refused_revocation_writes_no_audit_event`, which pins that the refusal happens before anything is written. Actor and audit event were already proved by `::test_revocation_is_audited_with_its_reason`.
+  - Criterion 3 — `::test_revoking_an_already_closed_approval_is_a_domain_refusal` for both `revoked` and `expired` closers, and `::test_the_closed_refusal_is_not_a_lifecycle_error`, which asserts the distinction rather than describing it. `::test_revoking_a_never_approved_approval_stays_a_lifecycle_refusal` holds the deliberate boundary: `pending -> revoked` has no §8.2 edge, so that stays `IllegalTransition` and is not absorbed.
+  - Negative controls, all three bit, restored and re-run green after each: deleting the blank-reason rule → `6 failed, 60 passed`, exactly the criterion-2 tests; weakening it to `reason == ""` (what the HTTP schema's `min_length=1` already gave) → `4 failed, 62 passed`, exactly the whitespace shapes and the audit test, with the empty-string case still passing; disabling the terminal check → `3 failed, 63 passed`, exactly the criterion-3 tests. That third control is the task in one line: the endpoint-level double-revoke test in `test_approval_lifecycle.py` **stayed green**, because it catches `LifecycleError` — which is precisely why the rule needed proving at the entry point.
+  - `uv run pytest -q tests/test_approval.py` → **35 passed** (24 before). `uv run pytest -q` → **2068 passed**; `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, so no migration; no route change, so no contract regeneration. The endpoint's stale comment about `LifecycleError` was corrected in the same change, because that code path is what moved.
 - **Note:** Split out of `T-033` on 2026-07-29. §17.6 lists approval revocation next to the operational switches, but approvals live in `drafts_and_approvals`, which already imports `audit_and_operations` — putting the entry point in the flag store would close an import cycle. `T-033`'s own acceptance criteria never mentioned revocation, so its intent is preserved intact.
 
 #### T-135 — `/readyz` returns 200 against a live database
 - **Stage / Priority:** 1 / P0
-- **Status:** `READY` — unblocked 2026-07-27 by `T-134`
+- **Status:** `DONE` (2026-07-31)
 - **Depends on:** T-004, T-134
 - **Spec:** §18.1, §17.5
 - **Objective:** Close the half of `T-004` acceptance criterion 2 that needs a running PostgreSQL.
@@ -223,8 +361,13 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
   3. The offline suite result is unchanged when the database is absent.
 - **Verification:** `docker compose up -d db`; `uv run pytest -q tests/test_health.py`
 - **Files:** `backend/tests/test_health.py`
-- **Blocker / Q:** Inherits `T-134` — the Docker engine is unreachable on this machine. **Unblock condition:** `docker version` reports a Server version and `docker compose up -d db` reports healthy. No `Q-###` applies.
-- **Completion evidence:** —
+- **Blocker / Q:** was inherited from `T-134` (Docker unreachable). **Cleared 2026-07-31:** `docker ps` reports `sales-agent-db-1 postgres:16 Up 2 days (healthy)`.
+- **Completion evidence (2026-07-31):**
+  - A `live_db_client` fixture in `tests/test_health.py` takes `conftest.py`'s session `database_url` — the throwaway PostgreSQL — and points the app at it. Taking that fixture buys the skip along with the connection; no new skip mechanism was invented. No application code changed, as scope required.
+  - Criterion 1 — `tests/test_health.py::test_readyz_is_200_against_a_live_database`: `200`, `status=ready`, `database=ok`, and `detail` absent. `::test_readyz_still_reports_shadow_mode_when_ready` adds §17.5's posture on the success path, which only the failing path asserted before. `uv run pytest -q tests/test_health.py` → **17 passed** (15 before).
+  - Criteria 2 and 3 — observed, not asserted in a meta-test: `DATABASE_URL=postgresql+psycopg://nobody:nothing@127.0.0.1:1/absent uv run pytest -q -rs tests/test_health.py` → `15 passed, 2 skipped`, both skips reported with `conftest.py`'s reason ("PostgreSQL is not reachable — start it with `docker compose up -d db`"). Skipped, not passed, and the other 15 are exactly the pre-existing count.
+  - Negative controls, all three bit and each restored green: pointing `check_database` at a closed port → only `test_readyz_is_200_against_a_live_database` failed (`1 failed, 16 passed`), with the existing 503-path tests still green, so the new test observes a real round trip rather than a constant; reporting `database="unavailable"` on the success branch → the same single failure; reporting `shadow_mode` inverted on the success branch only → only `test_readyz_still_reports_shadow_mode_when_ready` failed, so that test is not decorative.
+  - `uv run pytest -q` → **2057 passed**; `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, so no migration; no route change.
 
 #### T-004 — FastAPI application factory, structured logging, health endpoint
 - **Stage / Priority:** 1 / P0
@@ -323,7 +466,7 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
 
 #### T-007 — CI pipeline
 - **Stage / Priority:** 1 / P1
-- **Status:** `READY` — unblocked 2026-07-27 by `T-006`
+- **Status:** `DONE` (2026-08-01)
 - **Port note:** CI's `postgres` service can use the standard 5432 (no native PostgreSQL competes in a runner). Set `DATABASE_URL` explicitly in the workflow rather than relying on the local 55432 default.
 - **Depends on:** T-006
 - **Spec:** §18.1 (coordinated release), §19.2
@@ -335,9 +478,27 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
   2. `permissions:` is set to `contents: read`.
   3. No workflow step can perform an external write or requires a secret.
 - **Verification:** local equivalence run of every workflow step; YAML parse check.
-- **Files:** `.github/workflows/ci.yml`
+- **Files:** `.github/workflows/ci.yml`, `backend/tests/test_ci_workflow.py`, `backend/pyproject.toml`, `backend/uv.lock`
 - **Blocker / Q:** none
-- **Completion evidence:** —
+- **Completion evidence (2026-08-01):**
+  - **The refusal to bump blindly was right, and this is what it was protecting against.** `astral-sh/setup-uv` stopped publishing major and minor tags at **v8** — its release notes say "use immutable tags like `@v8.0.0` instead" — so `@v9`, the pin any ordinary bump would have written, **resolves to a tag that does not exist**. The workflow now pins `@v9.0.0`, and the reason is in the file beside it.
+  - Criterion 1 — `actions/checkout@v5 → @v7` (both jobs; the frontend one was missed by the first pass and caught by re-reading the file), `astral-sh/setup-uv@v5 → @v9.0.0`, `actions/setup-node@v4 → @v7`.
+  - Criterion 2 — every input confirmed **from the target major's own `action.yml`**, not from release notes alone, because notes say what changed and `action.yml` says what exists: `setup-node@v7` still declares `node-version`, `cache`, and `cache-dependency-path` (v5 added automatic package-manager caching and v6 narrowed it to npm; neither removes the explicit `cache:` this job sets). `setup-uv@v9.0.0` still declares `enable-cache` — its **default changed to `auto`**, and the workflow passes `true` explicitly, so nothing shifts. `checkout` is used with no inputs at all, so only the tag's existence mattered, and `v7`'s `action.yml` resolves.
+  - Criterion 3 — `uv run pytest -q tests/test_ci_workflow.py` → **17 passed**, allow-list unchanged.
+  - **The hazard became a test.** `IMMUTABLE_TAG_ONLY` plus `::test_an_action_without_major_tags_is_pinned_to_a_full_version` means shortening `@v9.0.0` to `@v9` — the obvious tidy-up, and one that looks like nothing is wrong — fails here instead of failing every CI run.
+  - Negative controls — **four, each bit and each restored green**: the setup-uv pin shortened to `@v9` → 1 failed; the same pin removed entirely → 2 failed; an unreviewed action in place of `setup-node` → 2 failed; the Node pin emptied → 1 failed (still covered *after* the bump, not only before it).
+  - `uv run pytest -q` → **2265 passed** (2264 before); `ruff check`, `ruff format --check`, `mypy app` clean. Workflow only — no application code, no schema, no contract.
+  - **Not proven here, by construction:** that the workflow *runs*. That is `T-164b`, and it needs a push.
+- **Completion evidence (2026-08-01):**
+  - **The ordering is the safety property, not a preference.** Every database fixture *skips* when PostgreSQL is unreachable (`tests/conftest.py`), so a job whose service container never came up would be green while running only the offline half of the suite — the CI equivalent of a control that does not bite. `alembic upgrade head` runs against the same `DATABASE_URL` **before** `pytest` and fails loudly instead; `::test_the_database_is_proven_reachable_before_the_tests_run` pins the order.
+  - **The acceptance criteria became tests rather than a one-time reading**, because a workflow file is edited by whoever is fixing CI at the time. `backend/tests/test_ci_workflow.py` parses `.github/workflows/ci.yml` and asserts them; that is the file-hint correction, and `pyyaml` moved from a transitive dependency of `uvicorn[standard]` into the declared `dev` group so the test does not rest on somebody else's extra.
+  - Criterion 1 — `::test_it_runs_every_canonical_command_from_the_ledger` reads the fenced block under **§2 of this file** and requires each `uv run …` command to be a step, so CI and the loop cannot diverge without one of them looking wrong; `::test_it_applies_and_checks_the_migrations`, `::test_it_runs_against_a_real_postgresql`, `::test_the_dependency_install_refuses_to_re_resolve` (`uv sync --frozen`), and `::test_the_workflow_is_valid_yaml_with_at_least_one_job` (the YAML parse check) cover the rest. **Met narrowly:** the canonical list in §2 is the backend one, and this workflow runs `backend/` only — the frontend's lint, typecheck, test, and build are not in CI. Filed as **`T-163`**, and the workflow header says so rather than implying coverage it does not have.
+  - Criterion 2 — `::test_the_workflow_permission_is_read_only` and `::test_no_job_grants_itself_more`; a job-level `permissions:` replaces the workflow-level one outright, so the top-level declaration is not on its own a guarantee.
+  - Criterion 3 — `::test_no_step_reads_a_secret` and `::test_no_step_reaches_outside_the_runner` scan the workflow with its **comment lines removed**: a comment cannot reach a registry, and the first draft failed on its own header sentence promising *no* image publishing, which would have taught the next author to delete the explanation. `::test_every_action_is_allowed_and_pinned` holds the third-party actions to an allow-list. `::test_the_safety_switches_are_stated_fail_closed` pins `SHADOW_MODE`/`OUTBOUND_EMAIL_ENABLED`/`MODEL_PROVIDER`/`ALLOW_REAL_MODEL_PROVIDER` in the job environment — they already default safe, and CI is where a change to them should be a diff somebody justifies.
+  - `::test_it_actually_fires` — a workflow with no trigger passes every other check here and never runs once. (YAML 1.1 parses a bare `on` as the boolean `True`; the test reads both keys. GitHub reads the file correctly.)
+  - Local equivalence run of every workflow step, in workflow order: `uv sync --frozen` → `Checked 44 packages`; `uv run ruff check .` → `All checks passed!`; `uv run ruff format --check .` → `201 files already formatted`; `uv run mypy app` → `Success: no issues found in 110 source files`; `uv run alembic upgrade head` → applied; `uv run alembic check` → `No new upgrade operations detected.`; `uv run pytest -q` → **2185 passed** (2172 before).
+  - Negative controls — **eight, each biting exactly one test and each restored green**: permission widened to `contents: write` → 1 failed; the `mypy` step dropped → 1 failed; `${{ secrets.SOME_TOKEN }}` added to the job environment → 1 failed; a `docker push` step appended → 1 failed; `actions/checkout@v5` swapped for an unreviewed unpinned action → 1 failed; `SHADOW_MODE` flipped to `"false"` → 1 failed; the `push` trigger removed → 1 failed; and the pytest step *moved ahead* of the migration step → 1 failed, which is the silent-skip hazard proven rather than asserted. Mutations were applied and restored as bytes, so the file's LF endings survived.
+  - Scope held: no deployment step, no image publishing, no environment promotion, no `secrets.*` reference anywhere in the file, no workflow with write permission. Nothing was committed or pushed — the workflow is inert until the user does that (`T-158`).
 
 #### T-008 — Repository ADR log and specification-reconciliation register
 - **Stage / Priority:** 1 / P1
@@ -1332,7 +1493,8 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
 
 #### T-144 — Hard-eligibility rule: approved source basis
 - **Stage / Priority:** 1 / P1
-- **Status:** `PLANNED`
+- **Status:** `DONE` (2026-08-01) — reconciled from `SPLIT` when `T-144b`, its last child, closed. The split note below is kept.
+- **Split note (2026-08-01):** **Found actionable in `PLANNED` with no blocker** — its own line reads "none, but it needs a schema decision on where provenance lives", and its three dependencies are all `DONE`. Same drift that hid `T-136`. Split before writing code, on the axis that worked there: **make the data exist, then enforce on it.** **`T-144a`** adds the provenance link — a candidate's identity can name the `ImportBatch` it came from — with the migration, the importer that sets it, and the fixtures; nothing refuses anything yet, so no eligibility answer changes. **`T-144b`** activates `Rule.APPROVED_SOURCE_BASIS` against that link: the approved-source-type allow-list, the move out of `DEFERRED_RULES`, and the fail-closed default that makes an unattributed candidate `ineligible`. Splitting this way keeps the change that can flip an eligibility answer in its own reviewable diff — which is the point, because `Rule` decides who may be contacted. **The schema decision, made in `T-144a` and recorded there:** provenance lives on **`Contact`**, the identity that actually gets contacted, not on the candidate (whose source basis is inherited, not its own) and not on the account (a contact can arrive from a different source than its company).
 - **Depends on:** T-045, T-042, T-046
 - **Spec:** §10.1 stage 1 ("approved source basis"), §9.3, ADR-005
 - **Objective:** Refuse a candidate whose identity came from a source §9.3 has not approved, so a scraped or unattributed row cannot reach outreach merely by existing in the database.
@@ -1347,6 +1509,58 @@ evidence, qualification, drafts, jobs, outbox, audit. Exit gate **G-02**.
 - **Blocker / Q:** none, but it needs a schema decision on where provenance lives — candidate, membership, or account.
 - **Completion evidence:** —
 
+#### T-144a — A contact records the import batch it came from
+- **Stage / Priority:** 1 / P1
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-042, T-046
+- **Spec:** §9.3 (initial sourcing sequence), §10.1 stage 1, §14.2
+- **Objective:** The provenance link `T-144b` needs: a contact can name the `ImportBatch` that created it.
+- **Scope (in):** `contact.source_import_batch_id`, a nullable foreign key with `RESTRICT`; the migration; `prospects.imports` setting it on the contacts it creates and **leaving it alone on the ones it reuses**; the test factories giving their contacts a batch so `T-144b` does not arrive with a suite full of unattributed identities.
+- **Scope (out):** Any eligibility change — no rule reads this column yet, and no candidate becomes ineligible because of it. That is `T-144b`, deliberately separate because it can flip who may be contacted.
+- **Acceptance criteria:**
+  1. A contact created by a CSV import names the batch it came from; test-proven end to end through `import_contacts`.
+  2. A contact **reused** by a later import keeps its original batch — first source wins, because an identity does not change where it came from.
+  3. The column is nullable and nothing refuses on it yet: eligibility answers are unchanged, test-proven.
+  4. The migration reverses cleanly (`downgrade -1` / `upgrade head` / `check`).
+- **Verification:** `uv run pytest -q tests/test_import.py tests/test_eligibility.py`; the migration round trip
+- **Files:** `backend/app/prospects/models.py`, `backend/app/prospects/imports.py`, a migration, `backend/tests/factories.py`, tests
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `contact.source_import_batch_id`, a nullable foreign key to `import_batch` with `RESTRICT`, migration `a17e5c4b8d20`. **On the contact** because that is the identity that gets contacted: a candidate's source basis is inherited rather than its own, and a contact can arrive from a different source than its company. The reason is written on the column, not only here.
+  - Criterion 1 — `tests/test_import.py::test_an_imported_contact_names_the_batch_it_came_from`, end to end through `import_csv` rather than by setting the column, and it checks the batch it names is the CSV one.
+  - Criterion 2 — `::test_a_reused_contact_keeps_its_original_batch`. The stamp happens **after** the loop, because the batch row is created last, and only over the contacts this import created. A later file naming the same person re-attributing them would be a provenance claim nobody made, and `T-144b` refuses on this value.
+  - Criterion 3 — `tests/test_eligibility.py::test_a_contact_with_no_source_basis_is_still_eligible_today` strips the provenance and asserts the decision is **unchanged**, with `::test_the_source_basis_rule_is_still_deferred_and_says_why` as its pair. Adding the link and refusing on it in one change set would have made the refusal impossible to review apart from the schema, and this rule decides who may be contacted.
+  - Criterion 4 — `alembic downgrade -1` → `upgrade head` → `check` → `No new upgrade operations detected.` **`alembic check` caught real drift first**: the migration created an index the model did not declare, so `ix_contact_source_import_batch_id` is now in `__table_args__` too.
+  - `tests/factories.py` gives every `World` contact a batch through a get-or-create `a_source_batch` (`import_batch.content_hash` is unique and more than one test builds two worlds in a transaction), so `T-144b` does not arrive to a suite full of unattributed identities and a sweep that would hide whether the rule works.
+  - Negative controls — **three bit and each restored green**: the importer stamping nothing → 3 failed; reused contacts re-stamped, breaking first-source-wins → 1 failed; `RESTRICT` changed to `CASCADE` → 1 failed. **A fourth deliberately did not bite** and is recorded as the criterion rather than a gap: stripping the factory's provenance changed nothing, which *is* criterion 3 — nothing enforces this column yet. It becomes a biting control at `T-144b`, whose scope now says to re-run it.
+  - `uv run pytest -q` → **2260 passed** (2255 before); `ruff check`, `ruff format --check`, `mypy app` clean. No route change, so no contract regeneration; the frontend is untouched. No eligibility answer changed anywhere — asserted, not assumed.
+
+#### T-144b — Refuse a candidate with no approved source basis
+- **Stage / Priority:** 1 / P1
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-144a, T-045
+- **Spec:** §10.1 stage 1 ("approved source basis"), §9.3, ADR-005
+- **Objective:** A candidate whose identity came from a source §9.3 has not approved is `ineligible`, and one with no recorded source at all is refused rather than passed by default.
+- **Scope (in):** An allow-list of approved `import_batch.source_type` values with a conservative default (only `csv` exists today, and §9.3 names manual/CSV import first); `Rule.APPROVED_SOURCE_BASIS` moved from `DEFERRED_RULES` into `IMPLEMENTED_RULES`; the check reading through the candidate to its contact; the refusal naming the rule and never the address (§15.5); positive and negative tests; the sweep of any fixture whose candidate must stay eligible; and re-running `T-144a`'s `factory-loses-provenance` control, which deliberately did not bite there and must bite here.
+- **Scope (out):** Any provider or LinkedIn source (`Q-003`, ADR-005 REJECTED). Widening the allow-list, which is a decision per source, not a task.
+- **Acceptance criteria:**
+  1. A candidate with no recorded source basis is `ineligible` naming this rule, not passed by default.
+  2. A candidate imported through `T-042`'s CSV path is eligible, and the batch it came from is identifiable.
+  3. `test_every_rule_is_either_implemented_or_explicitly_deferred` still passes with the rule moved.
+- **Verification:** `uv run pytest -q tests/test_eligibility.py tests/test_import.py`
+- **Files:** `backend/app/qualification/eligibility.py`, tests
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `Rule.APPROVED_SOURCE_BASIS` moved out of `DEFERRED_RULES` into `IMPLEMENTED_RULES`, and `_check_source_basis` **fails closed three ways**, because each is a different way of not knowing: no contact at all (an account-level candidate has no identity to have a basis for), a contact with no recorded batch (the row exists and nobody said where it came from — the scraped-or-unattributed case §9.3 refuses to begin with), and a batch whose `source_type` nobody approved.
+  - `APPROVED_SOURCE_TYPES = {"csv"}` is an **allow-list, not a deny-list**: §9.3 names manual/CSV import first and that is the only source this repository has an import path for. Adding a member needs §9.3 to actually name it; LinkedIn automation is rejected outright (ADR-005, `Q-003`).
+  - Criterion 1 — `tests/test_eligibility.py::test_a_candidate_with_no_recorded_source_basis_is_ineligible`, asserting the refusal *and* its `inputs`, plus `::test_a_candidate_from_an_unapproved_source_type_is_ineligible` for the allow-list.
+  - Criterion 2 — `::test_a_candidate_imported_from_csv_is_eligible` runs a real `import_csv` rather than setting the column, and checks the batch the contact came from is identifiable from it.
+  - Criterion 3 — `::test_the_deferred_rules_are_exactly_the_two_without_inputs` and `::test_the_source_basis_rule_is_no_longer_deferred`, which replaces the `T-144a` test that said in its own failure message it would be wrong once this landed. It was.
+  - §15.5 — `::test_the_refusal_names_the_source_type_and_never_the_person` asserts the person's name, the batch's file name, and the address are all absent from the rendered refusal. The `inputs` dict carries a source *type* only.
+  - **The sweep, and what it cost:** two suites build their own `World` and both needed provenance (`test_eligibility.py`, `test_pipeline_jobs.py` — 34 failures until they had it). Three expectations widened rather than being weakened: an account-level candidate now fails **both** contactability and source basis for the same underlying fact (there is no person here); the all-rules test strips provenance so it still fails every implemented rule; the deferred set is two, not three.
+  - Negative controls — **six, five bit immediately and each restored green**: the rule never run → 5 failed; missing provenance passing instead of refusing, the dangerous direction a "make it green" edit reaches for → 2 failed; the allow-list check skipped → 2 failed; `"scraped"` quietly added to the list → 2 failed; the refusal naming the person → 2 failed.
+  - **The sixth is the finding.** `T-144a` left `factory-loses-provenance` deliberately non-biting and this task's scope said it must bite here. It still did not: both suites use their own `World`, so `tests/factories.py`'s provenance was load-bearing for **nothing**. Closed by `::test_the_shared_factory_builds_a_candidate_that_passes_stage_one`, which asserts the shared factory's contact passes *this rule specifically* — not full eligibility, because that world is built for the §11.4 send chain and has never had a country or a readiness version, so asserting more would assert something it was never for. The control bites now (1 failed).
+  - `uv run pytest -q` → **2264 passed** (2260 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change (`T-144a` carried it), so no migration; no route change, so no contract regeneration; the frontend is untouched.
 #### T-145 — Hard-eligibility rule: obvious non-fit
 - **Stage / Priority:** 1 / P2
 - **Status:** `BLOCKED`
@@ -2009,7 +2223,7 @@ completes reviews without understanding the agent stack.
 - **ADR-021 amended:** TypeScript 5.9, not 6. `openapi-typescript` requires `typescript@^5.x` in every published version, and the alternatives were `--force` (npm's own message calls the result "potentially broken") or `@hey-api/openapi-ts`, which generates a runtime SDK rather than types. Recorded as a dated amendment rather than a quiet edit, because the original line was a real decision made without knowing what the generator required.
 
 #### T-061 — Authentication: OIDC integration with a local development stub
-- **Stage / Priority:** 2 / P0 · **Status:** `PLANNED` (parent; see the split note) · **Depends on:** T-060, T-012
+- **Stage / Priority:** 2 / P0 · **Status:** `SPLIT` (2026-07-31; relabelled 2026-08-01 — it was `PLANNED` while carrying a split note, which is the label `T-070` already uses for the same shape) · **Depends on:** T-060, T-012
 - **Spec:** §12.2 (managed SSO/OIDC; custom passwords rejected), §15.1 · **Objective:** Session handling through a managed identity provider, with a clearly-marked local stub for development.
 - **Acceptance:** no password authentication exists; the stub is unusable when `APP_ENV != local` (test-proven); sessions are short and revocable; service identities are separate from human identities.
 - **Verification:** authz test suite; a test asserting the stub is refused outside local. · **Files:** `backend/app/identity/auth*`, `frontend/*`
@@ -2540,7 +2754,7 @@ completes reviews without understanding the agent stack.
 
 
 #### T-068 — Approval expiry, revocation, and invalidation surfacing
-- **Stage / Priority:** 2 / P1 · **Status:** `SPLIT` (2026-07-31) · **Depends on:** T-067, T-056 · **Spec:** §7.5, §8.4, §17.6
+- **Stage / Priority:** 2 / P1 · **Status:** `DONE` (2026-07-31 — both children closed; split note preserved below) · **Depends on:** T-067, T-056 · **Spec:** §7.5, §8.4, §17.6
 - **Objective:** Show stale approvals, invalidated drafts, and expired claims in the dashboard and allow revocation.
 - **Acceptance:** an invalidated item appears with the triggering version; revocation requires the correct role and writes an audit event; a revoked approval can never dispatch (test-proven).
 - **Verification:** `uv run pytest -q tests/test_approval_lifecycle_ui.py` · **Files:** `backend/app/drafts_and_approvals/*`, `frontend/app/review/*` · **Q:** none
@@ -2574,7 +2788,7 @@ completes reviews without understanding the agent stack.
 
 #### T-068b — Surfacing stale approvals and invalidated drafts on the card
 - **Stage / Priority:** 2 / P1
-- **Status:** `READY` (2026-07-31 — corrected by checkpoint audit: both dependencies were `DONE` but the `T-068a` cycle never promoted this, while the header claimed it ready)
+- **Status:** `DONE` (2026-07-31)
 - **Depends on:** T-068a, T-065b
 - **Spec:** §7.5, §12.3
 - **Objective:** A reviewer sees that an approval went stale, why, and can revoke it.
@@ -2586,11 +2800,18 @@ completes reviews without understanding the agent stack.
   3. An approval that still authorizes a send is not shown as needing attention; test-proven.
 - **Verification:** `npm run test` from `frontend/`
 - **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - `frontend/app/attention/AttentionList.tsx` renders the §7.5 list with a per-row revoke form; `frontend/app/attention/page.tsx` loads it under the same session/401 handling as the review page; `lib/api.ts` gains `listStaleApprovals` and `revokeApproval` over the already-generated types for `GET /api/review/attention/approvals` and `POST /api/review/approvals/{approval_id}/revoke` (no route added, so `openapi.json` and `api-types.ts` are unchanged).
+  - Criterion 1 — `tests/attention-list.test.tsx` `shows the record that made it stale, not only the category` (the `triggering_id` itself is on screen), `labels the triggering record by what it is for each trigger` (a product-status trigger says "Product status version", not "Approved claim set"), and `says a trigger names no other record rather than rendering a blank` for the two triggers where `triggering_id` is legitimately null.
+  - Criterion 2 — `removes the row it revoked, and only that row`: two rows in, one revoked, the *other* one is the survivor (a list that dropped the wrong row also goes from two to one). `keeps the row and shows the backend's refusal when it is refused` proves the removal is not unconditional. `sends the reason, the record version, and the bearer token` pins the request shape.
+  - Criterion 3 — met more narrowly than its wording, deliberately: the frontend cannot tell a healthy approval from one the endpoint never sent, so `says so rather than rendering an empty list` and `offers no revoke control when nothing is stale` prove this surface shows exactly what the endpoint returns and nothing else. That the endpoint *excludes* valid approvals is `T-068a`'s `tests/test_approval_lifecycle.py::test_the_attention_endpoint_omits_live_approvals` (and `::test_a_live_approval_needs_no_attention` on the service beneath it). No follow-up task: the criterion is fully covered across the two layers, and duplicating the backend rule in the client would be a second implementation of it.
+  - Negative controls, all three bit: blanking the `triggering_id` cell failed exactly the three criterion-1 tests; making `onRevoked` a no-op failed exactly the two removal tests; replacing the empty state with an empty `<ul>` failed the empty-state test and the revoke-the-last-one test. Source restored and the suite re-run green after each.
+  - `npm run test` → **140 passed** (8 files; 127 before this task). `npm run lint`, `npm run typecheck` clean; `npm run build` compiled with `/attention` in the route table. Backend untouched.
 
 
 #### T-157 — The approval transaction pins no version, so two §8.4 triggers can never fire
 - **Stage / Priority:** 2 / P1
-- **Status:** `READY` (2026-07-31)
+- **Status:** `DONE` (2026-07-31)
 - **Depends on:** T-067a
 - **Spec:** §11.4, §8.4
 - **Found by:** `T-068a`, building the invalidation tests. `approve_message` calls `request_approval` without `product_status_version_id` or `approved_claim_set_id`, so every approval it creates pins **neither** — and `create_send_command` copies both from the approval, so the send command carries nulls too.
@@ -2604,11 +2825,20 @@ completes reviews without understanding the agent stack.
   3. The send command carries both versions, satisfying §11.4 field list; test-proven.
 - **Verification:** `uv run pytest -q tests/test_approval_transaction.py tests/test_approval_lifecycle.py`
 - **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - `approve_message` now resolves both pins through `_pins` (product: `get_effective_status` for the campaign's product at approval time; claims: `get_claim_set` for product+campaign) and passes them to `request_approval`; `create_send_command` already copied them onward.
+  - Criterion 1 — `tests/test_approval_transaction.py::test_an_approval_from_the_endpoint_pins_both_versions`: an approval created through `POST /api/review/revisions/{revision_id}/approve` carries `product_status_version_id` and `approved_claim_set_id`, each equal to the row actually in force.
+  - Criterion 2 — `::test_superseding_the_pinned_claim_set_invalidates_the_approval`: approve through the endpoint, publish a superseding set, then read `GET /api/review/attention/approvals` — the approval appears with `trigger=claim_set_superseded` and `triggering_id` = the pinned set. Both ends of the proof are HTTP; nothing constructs an approval by hand. `::test_expiring_the_pinned_product_status_invalidates_the_approval` does the same for the other §8.4 trigger.
+  - Criterion 3 — `::test_the_send_command_carries_both_versions`: the `SendCommand` row written by the endpoint carries both, satisfying the §11.4 field list.
+  - Fail-closed choice recorded as [ADR-023](docs/adr/ADR-023-an-approval-without-a-current-claim-set-is-refused.md): a campaign with no current approved claim set is refused (`409`) rather than pinned null, proved by `::test_a_campaign_with_no_current_claim_set_cannot_be_approved_into`.
+  - Negative controls, both bit: deleting the two pin arguments failed exactly the four pin tests; deleting the no-claim-set refusal failed exactly the fail-closed test. Source restored and re-verified green after each.
+  - `uv run pytest -q` → **2055 passed** in 129.78s. `ruff check` / `ruff format --check` / `mypy app` clean. No schema change, so no migration; no route change, so the typed-contract chain is untouched. `frontend/` untouched.
+  - Fixtures: the approval worlds in `tests/test_approval_transaction.py` and `tests/test_approval_lifecycle.py` now publish a current claim set through a new `World.publish_current_claim_set` helper on `tests/test_revision_validation.py`'s world; `a_claim_set` takes the next free version so it no longer collides with, or supersedes, that set.
 
 
 #### T-158 — The entire implementation is uncommitted working-tree state
 - **Stage / Priority:** 2 / P1
-- **Status:** `BLOCKED` (2026-07-31)
+- **Status:** `DONE` (2026-07-31 — resolved by the user directly, outside the loop)
 - **Depends on:** none
 - **Spec:** process.md §9 (git policy)
 - **Found by:** checkpoint audit 2026-07-31 ([report](docs/checkpoints/2026-07-31_stage2_checkpoint.md), finding M1). 118 paths — 31 modified, 87 untracked — sit on `main` with no commit since `62514a4904cc`. Effectively all Stage 1 and Stage 2 work exists only in the working tree.
@@ -2620,28 +2850,832 @@ completes reviews without understanding the agent stack.
   1. The user has explicitly authorized (or declined) a commit policy, recorded here.
   2. If authorized: `git status` shows a clean tree or only deliberate exclusions, and the ledger records the baseline commit hash.
 - **Verification:** `git status --short` and `git log --oneline`
-- **Blocker / Q:** user authorization required by process.md §9 — no `Q-###` exists for repository governance; this blocks on a direct user decision.
+- **Blocker / Q:** was a direct user decision (process.md §9 forbids the loop committing unasked); the user made it themselves.
+- **Completion evidence (2026-07-31):** observed at the start of the `T-157` cycle — `git status --short` returns zero lines and `git log --oneline -3` shows `3f07e60 Implement sales agent backend and review dashboard` on top of `62514a4`. The Stage 1 and Stage 2 work is committed; the baseline commit for future audits is **`3f07e60`**. The loop neither made nor requested this commit — it was already in the history when the cycle began, so criterion 1 is satisfied by the user acting rather than by an authorization recorded here.
+
+
+#### T-159 — The dashboard's entry page says the review queue does not exist, and links to nothing
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** none
+- **Spec:** §12.3, §19.6 Stage 2 exit gate
+- **Found by:** `T-068b`, adding the `/attention` page. `frontend/app/page.tsx` still carries `T-060a`'s scaffold copy — "The review queue is not built yet… this dashboard does not read them yet" — which has been false since `T-062`. It also contains no navigation at all: `/review/[candidateId]`, `/sign-in`, and now `/attention` are reachable only by typing a URL.
+- **Why it matters:** **G-10** is a non-engineer completing reviews unaided. Somebody who opens the dashboard is told the thing they came to do is not built, and is then given no link to it. `T-071`'s walkthrough would have to instruct them to type URLs, which is the same failure the gate is about. It is also the exact staleness the 2026-07-31 checkpoint caught in the ledger header, in a second file.
+- **Objective:** The entry page describes what the dashboard can do now and links to every surface a reviewer needs.
+- **Scope (in):** Correcting `app/page.tsx`'s copy; links to the review queue, the attention list, and sign-in; a test asserting each link is present and that no claim on the page describes an unbuilt surface.
+- **Scope (out):** A queue *index* listing candidates (that is `T-062`'s route, already built — this only links to it); styling (ADR-021 defers it); the operations panel (`T-069`).
+- **Acceptance criteria:**
+  1. The entry page no longer claims the review queue is unbuilt; test-proven.
+  2. Every reviewer-facing route is reachable from it by a link; test-proven.
+- **Verification:** `npm run test` from `frontend/`
+- **Blocker / Q:** none
+- **Scope correction (2026-07-31, at preflight):** this task's own **Scope (in)** said "links to the review queue … that is `T-062`'s route, already built". That was wrong twice: `T-062` is server-side RBAC, and the review-queue *endpoints* are `T-063a`/`T-063b` — but **no frontend page renders either**. There is no queue index to link to. The entry page therefore links every reviewer-facing route that exists and states plainly that the queue index is not built; the missing screen is filed as **`T-160`**. Recorded rather than silently narrowed, because the misattribution is what kept the gap invisible.
+- **Completion evidence (2026-07-31):**
+  - `frontend/app/page.tsx` rewritten: what the dashboard is for, that nothing is sent without an explicit approval (G-07), a `nav` linking `/sign-in` and `/attention`, and prose for `/review/<candidate id>` — a link a page cannot render, since there is no candidate to name.
+  - Criterion 1 — `tests/home-page.test.tsx` `no longer says %s` over both false sentences (`"The review queue is not built yet"`, `"does not read them yet"`) rather than a vague shape check, plus `says what the dashboard is for and that nothing is sent unapproved`. `still says plainly that the queue index is not built` holds the opposite failure: a page implying a screen exists sends a reviewer looking for something that is not there.
+  - Criterion 2 — met for every reviewer-facing route **that exists**, which is all of them bar the queue index `T-160` will add. `links to every static page the app serves` does not enumerate today's routes: it walks `app/**/page.tsx`, skips dynamic segments with the reason stated, and requires a link per static route, so the next unlinked screen fails here. `finds the pages it claims to be checking` is the guard on that walk, and `names each link by what a reviewer would go there to do` asserts the accessible name, because a link reading "click here" is reachable and useless to the person **G-10** is about.
+  - Negative controls, all three bit and restored: adding a whole new `app/synthetic-control-page/page.tsx` with no link → `1 failed, 7 passed`, exactly the route walk — proving the walk detects a *new* page, not merely today's list; removing the `/attention` link → `2 failed, 6 passed`, the walk and the accessible-name test; restoring the old "The review queue is not built yet" sentence → `2 failed, 6 passed`, the stale-claim test and the queue-index-honesty test.
+  - `npm run test` → **148 passed** (9 files; 140 before). `npm run lint`, `npm run typecheck` clean; `npm run build` compiled with `/`, `/attention`, `/sign-in`, and `/review/[candidateId]` in the route table. Backend untouched.
+
+
+#### T-160 — The review queue has no screen: the dashboard renders no list of candidates
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** T-063a, T-063b, T-151b
+- **Spec:** §12.3, §17.5, §19.6 Stage 2 exit gate
+- **Found by:** `T-159`, writing the entry page and having nothing to link to. `T-063a` serves `GET /api/review/candidates` and `T-063b` serves `GET /api/review/revisions`, both `DONE` and both with backlog age, filters, ordering, and pagination — but `T-064` built the review *card* at `/review/[candidateId]` and no task ever owned the index. `T-159`'s own note misattributed the queue to `T-062` (which is RBAC), which is how the gap stayed invisible for three cycles.
+- **Why it matters:** a reviewer can only open a card if somebody hands them a candidate UUID. **G-10** is a non-engineer completing reviews unaided, and there is currently no way for them to find the first candidate — `T-159`'s entry page has to say so in prose. It is the same shape of gap as `T-151`: an endpoint with no screen, invisible until a neighbouring task needed it.
+- **Objective:** A reviewer opens the dashboard, sees what is waiting, and clicks into a card.
+- **Scope (in):** A `/review` index page listing candidates from `GET /api/review/candidates` with the campaign, account, contact, and state each row carries; each row linking to its card; the revision queue and its backlog age from `GET /api/review/revisions`; the empty state distinguished from the loading and refused states as `/attention` does; the entry-page link and `T-159`'s prose replaced with it.
+- **Scope (out):** Filters and pagination controls beyond what one page needs (file separately if the queue outgrows one screen); sorting UI; the operations panel (`T-069`).
+- **Acceptance criteria:**
+  1. The index lists candidates awaiting review, each linking to its own card; test-proven.
+  2. Revisions awaiting review appear with their backlog age; test-proven.
+  3. An empty queue is stated as empty, not rendered as a blank page; test-proven.
+  4. `T-159`'s "there is no page listing the queue yet" prose is gone and the entry page links to the index; test-proven by `tests/home-page.test.tsx`'s existing route walk.
+- **Verification:** `npm run test` from `frontend/`
+- **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - `frontend/app/review/page.tsx` (the `/review` route, a static segment beside `[candidateId]`) loads both queues together and fails together — a screen showing candidates while silently omitting revisions because the second request failed would be worse than one that says it could not load. `frontend/app/review/ReviewQueue.tsx` renders from props; `lib/api.ts` gains `listCandidateQueue` and `listRevisionQueue` over the already-generated types. Neither call passes `state`: the endpoints default to `review_pending` themselves, and duplicating that decision in the client is how the two come to disagree. No backend route added, so `openapi.json`, `api-types.ts`, and `tests/test_fixtures.py` are untouched.
+  - Criterion 1 — `tests/review-queue.test.tsx::links each row to that candidate's card` asserts the **href of every row in order**, not a link count: two rows both pointing at the first candidate is the failure that makes a queue useless and a count would not see it. Plus `names the account, contact, and campaign on each row` and `says so when a candidate has no contact rather than leaving a gap`.
+  - Criterion 2 — `::shows how long each revision has been waiting` (§17.5's review backlog age, in the whole hours `T-063b` reports) and `::links a revision to the card where it is reviewed`, which pins that a revision row links to its *candidate* — there is no per-revision page, and inventing one would duplicate `T-064`'s card.
+  - Criterion 3 — `::states that nothing is waiting, for each queue independently`, `::renders no list at all when there is nothing in it`, and `::says the other queue is empty even when one has rows`, which catches a single page-level empty state: a reviewer with candidates waiting could not otherwise tell "no revisions" from "the revision queue failed to load".
+  - Criterion 4 — the entry page now links `/review`; `tests/home-page.test.tsx::points at the queue rather than apologising for it` asserts the link, its route walk requires it, and `T-159`'s honest-for-one-cycle sentence was moved into that file's `STALE_CLAIMS` list, since a page that under-claims sends a reviewer away as effectively as one that over-claims.
+  - Extra beyond the criteria, and small: `total` from the endpoint is surfaced as "Showing 1 of 40" when the page is not the whole queue (`::says how many are not shown`, `::stays quiet when the page is the whole queue`). Pagination *controls* remain out of scope; a reviewer silently working ten of forty rows is the §17.5 honesty problem, not a feature.
+  - Negative controls, all four bit and restored: every row linking to the same card → `1 failed, 20 passed`, exactly the href-order test; dropping the backlog age → `1 failed`; blanking the revision empty state → `2 failed`, the per-queue empty-state tests; the entry page no longer linking `/review` → `2 failed`, the new link assertion **and** `T-159`'s route walk, so criterion 4 is held by two independent tests.
+  - `npm run test` → **161 passed** (10 files; 148 before). `npm run lint`, `npm run typecheck` clean; `npm run build` compiled with `/review` in the route table alongside `/review/[candidateId]`. Backend untouched.
 
 
 #### T-069 — Operations panel: pause, shadow mode, queue depth, dead jobs
-- **Stage / Priority:** 2 / P1 · **Status:** `PLANNED` · **Depends on:** T-062, T-033 · **Spec:** §17.5 (operational dashboards), §17.6
+- **Stage / Priority:** 2 / P1 · **Status:** `DONE` (2026-07-31 — `T-069a`, `T-069b`, and `T-069c` are all `DONE`; the split note is preserved below) · **Depends on:** T-062, T-033 · **Spec:** §17.5 (operational dashboards), §17.6
 - **Objective:** Administrator view exposing queue depth, oldest job, dead jobs with reasons, outbox backlog, delivery ambiguity, review backlog age, claim invalidations, and suppressed-send attempts, plus the pause and shadow-mode switches.
 - **Acceptance:** every §17.6 control is reachable only by the administrator role; toggling writes an audit event; the panel shows shadow mode prominently; a test asserts a non-administrator receives 403 for each control.
 - **Verification:** `uv run pytest -q tests/test_operations_api.py` · **Files:** `backend/app/audit_and_operations/api*`, `frontend/app/operations/*` · **Q:** none
+- **Status note (2026-07-31):** **Split into `T-069a` (the read view), `T-069b` (the §17.6 controls), and `T-069c` (the React panel)** — three coherent change sets rather than one that spans a metrics read across five modules, a set of switches that can stop all work, and a screen. Criteria map: "the panel shows shadow mode prominently" and the §17.5 counters → `T-069a` (backend) and `T-069c` (screen); "every §17.6 control is administrator-only, toggling writes an audit event, a non-administrator gets 403 for each control" → `T-069b`.
+- **Files correction (2026-07-31, at preflight):** this task named `backend/app/audit_and_operations/api*`, and **the import graph refuses it**. The read view aggregates jobs, outbox, threads, approvals, and candidates; `audit_and_operations` is the platform module *every* domain module already imports (nine of them), so importing any of them back is a package cycle and `tests/test_module_boundaries.py::test_no_import_cycles` fails. `outreach_and_replies` is the top of the domain graph — imported only by `main` and `worker`, and already importing the packages the counters need — which is the same reasoning that put `approve_message` there (`T-067a`). Measured before writing code, not discovered by the suite.
+
+#### T-069a — Operations read view: what the system is doing right now
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** T-062, T-033
+- **Spec:** §17.5 (operational dashboards), §17.6, §12.1
+- **Objective:** An administrator sees the operational state §17.5 asks for, with shadow mode stated first.
+- **Scope (in):** `GET /api/operations/overview` under a new administrator-only permission; the §17.5 counters this repository has data for — job states, oldest queued job, dead jobs with their reasons, outbox backlog and its oldest pending event, delivery-ambiguous threads, review backlog and age, claim invalidations — plus the flags in force and the effective shadow-mode answer; the typed-contract chain.
+- **Scope (out):** Every mutating control (`T-069b`); the screen (`T-069c`); any §17.5 metric this repository records no data for — reported as *not measured* rather than as a zero.
+- **Acceptance criteria:**
+  1. The overview reports shadow mode and the flags in force; test-proven.
+  2. Each §17.5 counter reflects real rows, proven by seeding a row and seeing the number move — not by asserting the field exists.
+  3. Every role except the system administrator receives `403`; test-proven per role.
+  4. A metric with no data source is reported as not measured, never as `0`; test-proven.
+- **Verification:** `uv run pytest -q tests/test_operations_api.py tests/test_authz.py`
+- **Files:** `backend/app/outreach_and_replies/operations_api.py`, `backend/app/identity/rbac.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - `GET /api/operations/overview` under a new `VIEW_OPERATIONS` permission — **tier 5 for a read, declared deliberately**: dead-job reasons, backlog depths, and which safety switches are thrown are the operator's map and would equally be an attacker's, so it is its own permission rather than `VIEW_STATUS`, which every role holds.
+  - **The invariants routed the code twice, both times before the suite had to argue.** The import graph was measured at preflight and refused the ledger's `audit_and_operations` file hint (nine domain packages already import it, so importing any back is a cycle); the endpoint lives in `outreach_and_replies`, the top of the domain graph, exactly as `approve_message` does. Then `test_only_the_owning_package_names_a_lifecycle` refused the endpoint naming `JobState`, `CampaignCandidateState`, and `MessageRevisionState`, so each count moved to its owner — `jobs_and_outbox.queue`, `jobs_and_outbox.outbox`, `campaigns.candidate`, `drafts_and_approvals.revisions` — and the endpoint calls them. That is a better shape than the one first written: the state vocabulary stays in one place per lifecycle.
+  - Criterion 1 — `tests/test_operations_api.py::test_shadow_mode_is_reported_from_the_flag_as_well_as_configuration` runs with `shadow_mode=False` in settings, so a `True` answer can only have come from the database flag; an implementation reading only configuration passes a default-settings test and fails this one. Plus `::test_the_flags_in_force_are_listed` and `::test_a_switched_off_flag_is_not_in_force`.
+  - Criterion 2 — every counter is asserted by **moving it**: `::test_queue_depth_counts_real_jobs`, `::test_the_oldest_queued_job_age_is_reported`, `::test_dead_jobs_are_named_with_their_reasons` (the reason, not only the count — §17.1 guarantees one and a panel without it sends an operator to the database), `::test_the_outbox_backlog_counts_pending_events`, `::test_delivery_ambiguous_threads_are_counted`. `::test_an_empty_queue_reports_no_age_rather_than_zero` holds the `None`/`0` distinction.
+  - Criterion 3 — `::test_every_other_role_is_refused`, parametrized over **every** role but the system administrator, plus `::test_the_administrator_is_allowed`, `::test_no_session_is_refused`, and the structural `::test_the_route_is_declared_at_tier_five_under_its_own_permission`.
+  - Criterion 4 — `::test_suppressed_send_attempts_is_null_and_says_why`. `0` would read as "nothing is being suppressed", a claim nobody checked; the response carries `null` and the reason, and **`T-161`** owns making it measurable.
+  - **A skipped test was a hole, and was closed rather than left.** The delivery-ambiguity test first skipped when no outreach thread existed. A skip proves nothing, so it now builds the thread through `test_revision_validation`'s world.
+  - Negative controls, all five bit and each restored green: reading shadow mode from settings only → the flag test; reporting an empty `jobs_by_state` → the queue-depth test; dropping the dead-job sample → the reasons test; reporting `0` instead of `null` → the not-measured test; downgrading the declared permission to `VIEW_STATUS` → the declaration test. **One control did not bite on its first run, and that was a finding about the control:** `jobs_by_state = {} or {…}` is a no-op because `{}` is falsy, so the real comprehension still ran. Re-aimed at the response field, it bit. Recorded because the first result would otherwise have read as coverage.
+  - **`T-162` filed from that same control run:** downgrading the *declared* permission failed only the declaration test — every role was still refused, because the handler enforces `VIEW_OPERATIONS` in its own signature and nothing compares the table to the dependency. Not currently violated; nothing would notice if it were.
+  - Typed-contract chain: route declared in `ROUTE_PERMISSIONS`, `uv run python -m scripts.export_openapi` → `88618 bytes`, `npm run generate:api` regenerated, path added to `tests/test_fixtures.py` (in sorted position — the first insertion was misplaced and `::test_the_document_describes_the_endpoints_that_exist` caught it). `npm run typecheck` clean.
+  - `uv run pytest -q tests/test_operations_api.py` → **18 passed**. `uv run pytest -q` → **2130 passed**; `ruff check`, `ruff format --check`, `mypy app` clean. No migration.
+
+#### T-069b — The §17.6 operational controls over HTTP
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** T-069a
+- **Spec:** §17.6, §12.1, §7.4 (tier 5)
+- **Objective:** An administrator can throw the §17.6 switches this repository owns, and nobody else can.
+- **Scope (in):** Mutating endpoints over `audit_and_operations.flags.set_flag` for global pause, shadow mode, and outbound-email disable; `PAUSE_SYSTEM` (tier 5, already declared); a required reason on every toggle; the audit event `set_flag` already writes, asserted at the route; a `403` test per control per non-administrator role.
+- **Scope (out):** The read view (`T-069a`); the screen (`T-069c`); the §17.6 items this application does not own — revoking credentials, terminating the agent VM, and rolling back runtime versions are infrastructure actions, not application endpoints.
+- **Acceptance criteria:**
+  1. Toggling a flag through the endpoint writes an audit event naming the actor and the reason; test-proven.
+  2. Every role except the system administrator receives `403` for every control; test-proven per role per control.
+  3. A toggle with no reason is refused; test-proven.
+- **Verification:** `uv run pytest -q tests/test_operations_api.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - `POST /api/operations/flags/{key}` on the operations router, under `requires_mutation(Permission.PAUSE_SYSTEM)` — tier 5, the permission that already names this authority, never a reuse of a lower tier. The handler is a thin wrapper: `set_flag` already required a reason, upserted, and wrote the audit event, so nothing was rebuilt.
+  - Criterion 1 — `::test_throwing_a_switch_writes_an_audit_event` parametrized over **both directions**: releasing a pause is the more consequential half and is exactly what an incident review asks about. `::test_the_audit_actor_is_the_signed_in_administrator` holds §15.1's attribution at this route.
+  - Criterion 2 — `::test_no_other_role_may_throw_any_switch`, parametrized **every role × every control** (15 cases), plus `::test_a_refused_caller_changes_nothing` (a `403` that had already written the flag would be a refusal in name only), `::test_the_administrator_may_throw_each_switch`, `::test_no_session_cannot_throw_a_switch`, `::test_a_cookie_without_a_csrf_token_cannot_throw_a_switch`, and the structural `::test_the_route_is_declared_under_the_pause_permission`.
+  - Criterion 3 — `::test_a_switch_with_no_reason_is_refused` over empty and whitespace-only: a space satisfies the schema's `min_length` and explains nothing, which is why `set_flag` strips before checking.
+  - **Beyond the criteria, the property an operator is actually trusting:** `::test_releasing_every_switch_cannot_enable_outbound_email`. The flags are one half of an `and` and configuration is the other, so releasing every switch cannot start anything — the pause button cannot become a start button, and **G-07** still governs live sending. No gated external effect is reachable from this endpoint.
+  - **A control did not bite, and the endpoint got shorter as a result.** The route first carried its own `key in SCOPED_KEYS` guard; disabling it changed nothing, because `PRODUCT_DISABLED` with no `scope_id` is already a `FlagError` one layer down. The duplicate was deleted rather than kept — a rule enforced twice is a rule that can disagree with itself — the reason is recorded in the handler docstring, and the test now asserts the store's own wording. Re-aimed at `set_flag`'s scope validation, the control bit (`3 failed`).
+  - Negative controls, all four bit after re-aiming, each restored green: downgrading the permission to tier 3 → `17 failed`, every role × control refusal; removing `set_flag`'s scope validation → `3 failed`; writing the audit event under a different entity type → `3 failed`, exactly the audit tests; removing the blank-reason refusal → `2 failed`, the whitespace case only, since the schema still catches the empty string — the two guards proven distinct.
+  - **`T-070a`'s route walk caught a real weakness in itself.** Its fixture signed in as `OPERATOR_REVIEWER`, so this administrator-only route answered `403` for the *role* rather than for CSRF; the assertion on the refusal's wording failed rather than passing on a coincidence. The fixture now holds every role, so authorization can never be why that suite sees a refusal — which is the claim it was always making.
+  - Typed-contract chain: route declared in `ROUTE_PERMISSIONS`, `export_openapi` → `94022 bytes` (re-exported a second time after a docstring edit, which `::test_the_committed_openapi_document_matches_the_application` caught), `npm run generate:api`, path list updated in sorted position, `npm run typecheck` clean.
+  - `uv run pytest -q tests/test_operations_api.py` → **50 passed** (18 before). `uv run pytest -q` → **2165 passed**; `ruff check`, `ruff format --check`, `mypy app` clean. Frontend `npm run test` → **161 passed**. No migration.
+
+#### T-069c — The operations panel screen
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** T-069a, T-069b
+- **Spec:** §17.5, §17.6, §12.3
+- **Objective:** An administrator reads the operational state and throws a switch without a terminal.
+- **Scope (in):** `/operations` rendering `T-069a`'s overview with shadow mode stated first and dead jobs shown with their reasons; `T-069b`'s controls, each requiring a typed reason; the entry-page link (`tests/home-page.test.tsx`'s route walk will require it).
+- **Scope (out):** Everything the two backend children own.
+- **Acceptance criteria:**
+  1. Shadow mode is the first thing on the panel; test-proven.
+  2. A dead job appears with its reason, not only its count; test-proven.
+  3. Throwing a switch sends the reason the administrator typed and shows the backend's refusal on failure; test-proven.
+- **Verification:** `npm run test` from `frontend/`
+- **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - `frontend/app/operations/page.tsx` (the `/operations` route) loads `T-069a`'s overview under the same session/401 handling as the other screens; `OperationsPanel.tsx` renders it and wires `T-069b`'s switches; `lib/api.ts` gains `getOperationsOverview` and `setOperationalFlag` over the already-generated types, with `FlagKey` taken from the generated path so it cannot drift. The entry page links it. No backend change, so no contract regeneration.
+  - Criterion 1 — `tests/operations-panel.test.tsx::is the first section on the page` asserts **by position** (`headings[0]`), not by presence: an operator opening this during an incident asks one question before any other, and a row buried in a table answers it only to somebody who already knew to look. `::states plainly that nothing can leave when shadow mode is on` and `::says so when shadow mode is off, and names the gate that still applies` cover both readings — "off" must not read as "sending", since **G-07** still governs that.
+  - Criterion 2 — `::shows the reason, not only the count`, `::flags one that needs a human`, `::says how many there are when the sample is smaller than the total` (the endpoint bounds the sample, and showing five of four hundred silently is the §17.5 honesty problem in a different place), and `::states an empty state rather than rendering nothing`.
+  - Criterion 3 — `::sends the reason the administrator typed, and the direction implied by the current state` asserts the whole request body; `::will not submit without a reason` and `::will not submit a whitespace-only reason` stop the button wasting a decision the backend would refuse; `::shows the backend's own refusal` and `::refuses to send at all when there is no session` cover the failure paths. `::updates the posture from the response rather than assuming it` is the subtle one: shadow mode is configuration **or** the flag, so releasing the flag may change nothing, and guessing would let the panel claim outreach is live while the environment says otherwise.
+  - Negative controls, all five bit and each restored green: moving the posture section below the switches → the positional test; removing the dead-job reason → `1 failed`; dropping the typed reason from the request body → `1 failed`; hiding the refusal alert → `2 failed`; unlinking the panel from the entry page → `T-159`'s route walk. **The posture control had to be rewritten before it bit**: the first version added a `data-moved` attribute, which is a no-op — the heading order would not have changed — so it was replaced with a real cut-and-reinsert of the section.
+  - `npm run test` → **182 passed** (11 files; 161 before). `npm run lint`, `npm run typecheck` clean; `npm run build` compiled with `/operations` in the route table. Backend untouched.
+
+#### T-161 — A suppressed send attempt is refused and never recorded
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** §17.5 (operational dashboards: "suppressed-send attempts"), §15.6
+- **Found by:** `T-069a`, building the operations overview. §17.5 lists suppressed-send attempts among the numbers a dashboard should show, and nothing in this repository records one: suppression is enforced by refusing before a send command exists, so there is no row to count. The overview reports `null` with the reason rather than `0`.
+- **Why it matters:** `0` and "not measured" are different claims, and the first is the one an operator would act on. A campaign whose sends are silently all being suppressed looks identical to a campaign with nothing to send.
+- **Objective:** A refused send attempt leaves a countable trace.
+- **Scope (in):** Recording the refusal where suppression is enforced — an audit event or a counter row carrying the scope that matched (person, email, domain, account) and the campaign; the overview reporting the count instead of `null`.
+- **Scope (out):** Any change to what suppression *decides* (§15.6 is settled); retention policy for the new rows (`Q-019`).
+- **Acceptance criteria:**
+  1. A send refused by suppression writes a record naming the scope that matched; test-proven.
+  2. The operations overview reports the count and no longer lists it under `not_measured`; test-proven.
+- **Verification:** `uv run pytest -q tests/test_suppression.py tests/test_operations_api.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **The premise in the task's own "Found by" was wrong, and preflight found it.** It says suppression "refuses before a send command exists, so there is no row to count". Half true: `qualification.eligibility` does refuse that early, but §15.6 also requires the check *inside the final send transaction*, and `preconditions._check_suppression` has been doing it since `T-035c` — writing an `outbox.recheck_refused` audit row every time. The attempt was already recorded; what was missing was the **scope**, which lived in a sentence inside `outbox_event.last_detail`, and anything that counted it. So this task became "make the existing trace structured and countable" rather than "invent a trace", which is a much smaller change than its scope line implies.
+  - Criterion 1 — `preconditions.SuppressedAtSend` carries `.scope`, and `dispatch._refusal_attributes` reads it off the exception by attribute, exactly as it already reads `check`/`detail`/`is_recoverable`, because `jobs_and_outbox` must not import `outreach_and_replies` (§18.2). `_settle` writes it as `payload["refused_scope"]`. Proven by `tests/test_preconditions.py::test_a_suppressed_send_records_the_scope_that_matched`, parametrized over **all four** §15.6 scopes through a real dispatch, and by `::test_a_refusal_with_no_scope_records_none` — only suppression has a scope, and a paused campaign must not invent an empty one.
+  - **§15.5 is the reason the payload carries a category and not an identity.** `::test_the_recorded_scope_carries_no_address_and_no_identifier` asserts the recipient's address, the contact ID, and the domain are all absent from the rendered payload. The category is also the operationally useful half: a run of `domain` matches is a different incident from a run of `person` ones.
+  - Criterion 2 — `jobs_and_outbox.outbox.refused_by_check_count(session, check)` counts audit rows, **not outbox rows**: an outbox event carries only its last outcome, so a recipient refused on three dispatches would count once, and §17.5 asks for *attempts*. `RECHECK_REFUSED_ACTION` became a constant shared by the writer and the reader, because a renamed string in one of them would silently make every count zero. The check name is a parameter rather than a constant in `jobs_and_outbox`, since `outreach_and_replies` owns `Recheck` and importing it would invert the §18.2 direction. Proven end to end by `::test_a_suppressed_send_becomes_a_countable_attempt` (0 → 1 through a real dispatch, and a `campaign_status` refusal still counts 0), and at the endpoint by `tests/test_operations_api.py::test_suppressed_send_attempts_is_zero_when_nothing_has_been_refused`, `::test_suppressed_send_attempts_counts_attempts_not_recipients`, `::test_another_check_refusing_is_not_a_suppressed_send`, and `::test_the_not_measured_list_no_longer_names_this_metric`.
+  - **The field became `int`, not `int | None`, so the frontend was not optional.** The typed-contract chain ran — `uv run python -m scripts.export_openapi`, `npm run generate:api` — and the generated `suppressed_send_attempts: number` made the panel's fixture a type error until it was updated. That is the contract doing its job, and it is why this cycle touched the dashboard: leaving the panel alone would have removed the honest "not measured" line and shown nothing in its place, which is a worse answer than the one it replaced. No route was added, so `tests/test_fixtures.py`'s path list is unchanged. No model changed, so there is no migration.
+  - `not_measured` is **kept while empty**, deliberately: it is the mechanism by which a future unmeasured §17.5 number is stated instead of shown as a zero an operator would act on. `operations-panel.test.tsx::states an unmeasured number rather than implying a zero` renders a placeholder so the path stays proven, and `::renders no not-measured section when everything is measured` pins the empty case.
+  - Negative controls — **six, each bit and each restored green**: the scope not carried on the refusal → 4 failed; the dispatcher not reading it → 4 failed; the scope read but never written to the payload → 4 failed; the count dropping its `refused_check` filter so every refusal reads as a suppressed send → 2 failed; the endpoint hard-coding `0` → 1 failed; the panel replacing the number with "see the logs" → 2 failed.
+  - `uv run pytest -q` → **2198 passed** (2188 before); `npm run test` → **185 passed** (182 before); `ruff check`, `ruff format --check`, `mypy app`, `npm run lint`, `npm run typecheck` clean; `npm run build` compiled with the same seven routes.
+  - Scope held: nothing about what suppression *decides* changed (§15.6 is settled), and retention of the new payload key stays with `Q-019`. No external effect; the fake adapter refused every dispatch as designed.
+
+#### T-162 — A route's declared permission and the one it enforces can disagree silently
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** none
+- **Spec:** §15.1 ("server-side authorization for every action"), §7.4
+- **Found by:** `T-069a`'s negative controls. Changing `ROUTE_PERMISSIONS` for `GET /api/operations/overview` from `VIEW_OPERATIONS` to `VIEW_STATUS` — the permission **every** role holds — failed only the structural declaration test. Every role was still refused, because the handler enforces `requires(Permission.VIEW_OPERATIONS)` in its own signature and nothing compares the two.
+- **Why it matters:** `T-062`'s table is what a reviewer reads to answer "who may do this", and its whole value is that it is the same answer the code runs on. Today they are two independent statements: a route could declare `VIEW_STATUS` and enforce nothing at all, or declare a tier-5 permission and enforce a tier-0 one, and the only test that would notice is the one somebody remembered to write per route. Not currently violated — every route agrees — but nothing would say so if that changed.
+- **Objective:** The permission a route declares is provably the permission it enforces.
+- **Scope (in):** A structural check over the real application that, for each route, resolves the permission its `requires`/`requires_mutation` dependency was constructed with and compares it to `ROUTE_PERMISSIONS`; proof that the detector fires, by feeding it a route whose two answers differ.
+- **Scope (out):** Changing any current declaration or dependency — they agree today; this is the check that keeps it true.
+- **Acceptance criteria:**
+  1. A route declaring one permission and enforcing another fails a test; the detector is proven to fire, not merely to exist.
+  2. The check runs over every route the application serves, not a list.
+- **Verification:** `uv run pytest -q tests/test_authz.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - **The enforced permission had to become observable first.** It lived only inside the closure `requires(permission)` returns, so no test could read it. `identity/dependencies.py` now tags both factories through `_marked`, and `enforced_permission(call)` reads the tag back — a function rather than a bare attribute, so a test cannot disagree with the producer about the name and "authorizes nothing" is an answer instead of an `AttributeError`. Two helpers and one call at each factory; no behaviour changed, since `_marked` returns the same object.
+  - `declaration_mismatches(routes, declared)` in `tests/test_authz.py` is a **pure function over the route objects and the table**, which is what lets the detector be run against a synthetic application whose two answers differ. It walks the whole dependency tree rather than the handler's own parameters — a check applied through a router is as real as one in the signature, and a top-level-only walk would report it as enforcing nothing.
+  - Criterion 1 — proven to fire four ways on synthetic routes: `::test_the_check_detects_a_route_enforcing_a_different_permission` (the exact `T-069a` shape), `::test_the_check_detects_a_route_that_enforces_nothing` (the dangerous direction — the table promises an administrator and the code asks nobody), `::test_the_check_detects_a_public_route_that_enforces_something` (harmless-looking and still a lie), and `::test_the_check_accepts_agreement` so it is not noise. `::test_the_check_reads_a_mutation_dependency_too` pins that the tag survives `requires_mutation`'s wrapping — without it every state-changing route would silently read as enforcing nothing.
+  - Criterion 2 — `::test_every_route_enforces_the_permission_it_declares` over `route_objects()`, the same recursion `application_routes` uses, with `::test_the_route_walk_finds_permission_bearing_routes` as the guard: at least 10 routes and at least 8 carrying a permission, so a walk that found nothing cannot read as compliance.
+  - Negative controls, all three bit and each restored green: declaring `VIEW_STATUS` for `GET /api/operations/overview` while the handler still enforces `VIEW_OPERATIONS` → `1 failed` — **this is the exact mutation that, during `T-069a`, failed only the structural declaration test while every role stayed correctly refused, and it is now caught**; the mirror image, handler changed and table left alone → `1 failed`; removing the marker from `requires` → `4 failed`, proving the tag is load-bearing rather than decoration.
+  - Scope held: no declaration and no dependency was changed — they agree today, and this is the check that keeps it true.
+  - `uv run pytest -q tests/test_authz.py` → **47 passed** (40 before). `uv run pytest -q` → **2172 passed**; `ruff check`, `ruff format --check`, `mypy app` clean. No route added, so no contract regeneration; no migration; frontend untouched.
+
+#### T-163 — CI runs the backend only; the dashboard is unchecked on every push
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-007
+- **Spec:** §18.1 (one repository, one coordinated release process), §19.2
+- **Found by:** `T-007` itself. Its acceptance criterion 1 pins the workflow to the canonical command list in §2 of this file, which is the **backend** list — written at Stage 1, before `frontend/` existed. Recorded rather than absorbed: widening `T-007` would have made its own criteria unfalsifiable.
+- **Why it matters:** the dashboard is now 182 tests, a typed contract generated from `frontend/openapi.json`, and the surface a reviewer at gate **G-10** actually touches. None of it runs on a push. The failure this misses is the one the loop hits most: the OpenAPI document and `lib/api-types.ts` drift out of step with the routes, and nothing outside a local run says so.
+- **Objective:** Every push runs the dashboard's checks too, including the typed-contract regeneration check.
+- **Scope (in):** A second job in `.github/workflows/ci.yml` running `npm ci`, `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`; a step that re-exports `frontend/openapi.json` via `uv run python -m scripts.export_openapi` and fails if the checked-in document or `lib/api-types.ts` would change; §2 of this file extended with the frontend command list so `tests/test_ci_workflow.py::test_it_runs_every_canonical_command_from_the_ledger` covers both. Node pinned to the version `frontend/package.json` targets.
+- **Scope (out):** Deployment, preview environments, publishing, any step needing a secret or write permission — `T-007`'s three criteria bind this job unchanged.
+- **Acceptance criteria:**
+  1. The frontend job runs lint, typecheck, test, and build, and the ledger-driven command test covers the frontend list as well as the backend one.
+  2. A checked-in `openapi.json` or `lib/api-types.ts` that no longer matches the application fails the job — proven with a control that mutates one of them.
+  3. `permissions: contents: read`, no secret, no external write — the existing tests still pass unchanged.
+- **Verification:** `uv run pytest -q tests/test_ci_workflow.py`; local equivalence run of every new step.
+- **Files:** `.github/workflows/ci.yml`, `backend/tests/test_ci_workflow.py`, `tasks.md` §2
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **The contract step was written, proven redundant, and deleted.** Scope (in) asked for a step that re-exports `openapi.json` and fails if the checked-in document or `lib/api-types.ts` would change. It was written, and then the preflight it should have had showed both arrows of `application → openapi.json → api-types.ts` are *already* tested — `tests/test_fixtures.py::test_the_committed_openapi_document_matches_the_application` compares the committed document with the live application object (full equality, not a path list), and `frontend/tests/api-types.test.ts` regenerates the client from that document and compares — and **both suites run in the two CI jobs**. A rule enforced twice is a rule that can disagree with itself, and the copy nobody exercises is the one that drifts; the same reasoning deleted the duplicate scoped-key guard from the operations flag route. The steps came out, the reason is in the workflow header where a reader will look, and `::test_the_contract_drift_checks_this_workflow_relies_on_still_exist` makes deleting either test fail here too — so the coverage cannot vanish leaving only a comment.
+  - Criterion 1 — `::test_the_dashboard_runs_its_own_canonical_commands` over the **second** fenced block now in §2 (`lint`, `typecheck`, `test`, `build`); `canonical_commands()` reads *every* fenced block in the section rather than the first, which is the difference between covering both lists and reporting full coverage of half of one. `::test_the_dependency_installs_refuse_to_re_resolve` covers `npm ci` alongside `uv sync --frozen`, and `::test_the_node_version_is_pinned` covers the pin (`package.json` declares no `engines` range, so the workflow is where the version is stated).
+  - Criterion 2 — proven by control rather than by a step: mutating one `summary` string in the committed `frontend/openapi.json` failed **both** jobs' suites — backend `1 failed, 2 passed` and dashboard `1 failed | 9 passed` — and both returned to green on restore (`3 passed` / `10 passed`). That is the criterion's wording met exactly; only the mechanism changed.
+  - Criterion 3 — unchanged and still enforced: `::test_the_workflow_permission_is_read_only`, `::test_no_job_grants_itself_more` (now with a second job to catch), `::test_no_step_reads_a_secret`, `::test_no_step_reaches_outside_the_runner`, `::test_every_action_is_allowed_and_pinned` with `actions/setup-node` added to the allow-list deliberately.
+  - Ordering assertions moved from the flattened command list to `job_commands(workflow, job)`: two jobs run concurrently, so a position in a whole-workflow list means nothing, and the backend reachability assertion would have started comparing indexes across jobs.
+  - Local equivalence run of every new step: `npm ci --dry-run` → `up to date in 2s` (**`--dry-run`**, deliberately: a real `npm ci` deletes `node_modules` first, and a registry hiccup would have left the user's tree unbuildable for no extra evidence — it validates the same lockfile agreement); `npm run lint` → clean; `npm run typecheck` → clean; `npm run test` → **182 passed (11 files)**; `npm run build` → compiled, seven routes.
+  - Negative controls — **seven, each restored green**: `npm run typecheck` dropped from the job → 2 failed; `npm run test` dropped → 3 failed (including the drift-cover guard, which is the point); the Node pin emptied → 1 failed; `permissions: contents: write` added to the *frontend* job → 1 failed; a command added to §2 that CI does not run → 2 failed, which proves the second fenced block is really being read; `test_the_committed_openapi_document_matches_the_application` renamed away → 1 failed; and the contract-drift control above. Two controls initially failed their own uniqueness assertion rather than reporting a false pass — `tasks.md` and `test_fixtures.py` are CRLF in this working tree and an `\n` needle matched nothing.
+  - `uv run pytest -q` → **2188 passed** (2185 before); `npm run test` → **182 passed**, unchanged, since no frontend source was touched. `ruff check`, `ruff format --check` clean.
+  - Scope held: no deployment, no publishing, no secret, no write permission, no frontend source change. Nothing committed or pushed.
+
+#### T-164 — The CI workflow pins action majors that are two to four releases behind
+- **Stage / Priority:** 2 / P3
+- **Status:** `SPLIT` (2026-08-01)
+- **Split note (2026-08-01):** **Criterion 3 as written could never be satisfied by this loop**, and that was a defect in the task rather than a reason to keep deferring it: "the workflow runs green after the bump" needs a CI run, the workflow has never run at all, and only the user can push. Left alone, `T-164` would sit `READY` forever while the pins went further out of date. Split rather than weakened, so the intent survives intact: **`T-164a`** verifies each action's inputs against its own `action.yml` at the target major and updates the pins — closable on local evidence, because "the inputs still exist and mean the same thing" is a checkable fact. **`T-164b`** holds criterion 3 alone: the first green run, which closes when the user pushes and CI passes.
+- **Depends on:** T-007
+- **Spec:** §18.1, §19.4
+- **Found by:** `T-163`, checking that the actions `T-007` referenced actually exist before adding a third. They do — and they are old: the workflow pins `actions/checkout@v5` while **v7.0.1** is current, and `astral-sh/setup-uv@v5` while **v9.0.0** is current. `actions/setup-node@v4` was then chosen deliberately over the current **v7.0.0** for the same reason the others were left alone.
+- **Why it was not fixed in place:** a major bump can rename or drop an input, and none of that is verifiable from this machine — `enable-cache`, `cache-dependency-path`, and `node-version` would each be a guess. A blind bump that breaks CI is worse than a pin that works, and the correct place to find out is a run of the workflow, which needs the user's push (`T-158`). Recorded rather than absorbed, so the staleness is a decision somebody made rather than a thing nobody noticed.
+- **Objective:** Every action is on a current major, with its inputs verified against that major's documentation.
+- **Scope (in):** Reading each action's release notes for the majors being skipped; updating the three pins; confirming `enable-cache`, `cache-dependency-path`, and `node-version` still exist and mean the same thing; a first green run.
+- **Scope (out):** Pinning to commit SHAs — a separate decision, and `T-007`'s header records why tags were chosen.
+- **Acceptance criteria:**
+  1. Each action pin is current, or the workflow records why an older major is deliberate.
+  2. `tests/test_ci_workflow.py::test_every_action_is_allowed_and_pinned` still passes, and the allow-list is unchanged.
+  3. The workflow runs green after the bump — this one cannot be closed on local evidence alone.
+- **Verification:** `uv run pytest -q tests/test_ci_workflow.py`; a CI run.
+- **Files:** `.github/workflows/ci.yml`
+- **Blocker / Q:** none — but criterion 3 needs the workflow to have run at least once, which needs the user's push.
+
+#### T-164a — Verify the action inputs and update the pins
+- **Stage / Priority:** 2 / P3
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-007
+- **Spec:** §18.1, §19.4
+- **Objective:** Every action pin is current, and current was verified against the action's own `action.yml` rather than assumed.
+- **Scope (in):** Reading each action's release notes for the majors being skipped **and** its `action.yml` at the target, because release notes say what changed and `action.yml` says what exists; updating the three pins; the reason recorded in the workflow where the next reader stands.
+- **Scope (out):** Commit SHAs — a separate decision, and `T-007`'s header records why tags were chosen. The first green CI run, which is `T-164b`.
+- **Acceptance criteria:**
+  1. Each pin is current, or the workflow records why an older major is deliberate.
+  2. Every input the workflow passes is confirmed present at the target major, from that major's `action.yml`.
+  3. `tests/test_ci_workflow.py` still passes and the allow-list is unchanged.
+- **Verification:** `uv run pytest -q tests/test_ci_workflow.py`
+- **Files:** `.github/workflows/ci.yml`, `backend/tests/test_ci_workflow.py`
+- **Blocker / Q:** none
+
+#### T-164b — The CI workflow runs green for the first time
+- **Stage / Priority:** 2 / P3
+- **Status:** `BLOCKED` — needs the user to push; no `Q-###` exists for it
+- **Depends on:** T-164a
+- **Spec:** §19.4
+- **Objective:** The workflow has actually run, green, at least once.
+- **Scope (in):** Reading the first run's log; fixing whatever it reveals; recording the run as the evidence.
+- **Scope (out):** Everything `T-164a` owns.
+- **Acceptance criteria:**
+  1. A CI run on this workflow has completed successfully, and the ledger names it.
+- **Verification:** the run itself
+- **Files:** `.github/workflows/ci.yml` if the run reveals a fault
+- **Blocker / Q:** the user's push. `T-158` records that the tree is uncommitted, and nothing in this loop may commit or push (external-action boundary). This is the only task in the ledger blocked on an action rather than a decision.
+- **Local dry run of the whole workflow (2026-08-01):** every command `ci.yml` runs was executed against this working tree and passed. Backend: `uv sync --frozen` (44 packages checked), `ruff check`, `ruff format --check`, `mypy app`, `alembic upgrade head`, `alembic check` → *No new upgrade operations detected*, `pytest -q` → **2348 passed, 2 xfailed**. Frontend: `npm ci --dry-run` → *up to date*, `npm run lint`, `npm run typecheck`, `npm run test` → **185 passed** in 11 files, `npm run build` → 7 routes compiled.
+- **What that does and does not establish.** It removes the ordinary reasons a first run goes red — a stale lockfile, a model/migration divergence, a type error, a broken build. It is **not** a CI run: this was Windows rather than `ubuntu-latest`, against the local Docker Postgres rather than the workflow's `postgres:16` service container, and `npm ci` was a dry run, so a clean-install-only fault would still surface on the real thing. The acceptance criterion is unchanged and still needs an actual run to name.
+#### T-165 — The frontend dependency overrides outlive their reason silently
+- **Stage / Priority:** 2 / P3
+- **Status:** `READY`
+- **Depends on:** T-152
+- **Spec:** §19.4
+- **Found by:** `T-152`. Its fix is two `overrides` entries raising `postcss` and `sharp` above what `next@16.2.12` pins them to. An override is a standing instruction to ignore what a dependency asked for, and nothing expires it: the day a stable `next` ships with both raised, these entries keep pinning versions nobody chose, and the first symptom is an upgrade that silently does not take.
+- **Why it matters:** the entries are correct *today* and become wrong quietly. That is the shape of every stale pin — it never fails, it just stops matching the reason written next to it.
+- **Objective:** Each override is removed once `next` no longer needs it, or its continued presence is a fresh decision.
+- **Scope (in):** Checking `npm view next dist-tags` and the resolved `postcss`/`sharp` under the current stable `next`; dropping any override the release makes redundant; re-running `npm audit --audit-level=high` and the four scripts; updating the `//overrides` note or deleting it with the block.
+- **Scope (out):** Bumping `next` across a major — that is `ADR-021`'s pin and a separate decision.
+- **Acceptance criteria:**
+  1. Every remaining override is either still required by a re-measured `npm audit`, or gone.
+  2. `npm audit --audit-level=high` clean, and lint, typecheck, test, and build all pass.
+- **Verification:** `npm audit --audit-level=high` and the four scripts, from `frontend/`
+- **Files:** `frontend/package.json`, `frontend/package-lock.json`
+- **Blocker / Q:** none — but there is nothing to do until a stable `next` ships past `16.3.0-preview.7`. Re-measure before starting; if the release has not happened, this stays `READY` rather than becoming work.
 
 #### T-070 — Session, CSRF, and web-security hardening with tests
-- **Stage / Priority:** 2 / P0 · **Status:** `PLANNED` · **Depends on:** T-061 · **Spec:** §15.1
+- **Stage / Priority:** 2 / P0 · **Status:** `SPLIT` (2026-07-31) · **Depends on:** T-061 · **Spec:** §15.1
 - **Objective:** Secure session cookies, CSRF protection on all state-changing routes, reauthentication for high-risk administration, and immutable actor attribution.
 - **Acceptance:** a state-changing request without a CSRF token fails; cookies are `HttpOnly`/`Secure`/`SameSite`; high-risk administrative actions require reauthentication; every mutation records an immutable actor.
 - **Verification:** `uv run pytest -q tests/test_web_security.py` · **Files:** `backend/app/core/security*` · **Q:** none
+- **Status note (2026-07-31):** **Split into `T-070a`, `T-070b`, and `T-070c`**, and the dependency narrowed at the same time. `T-061` is a split parent: `T-061a` (the session layer) is `DONE` and `T-061b` (managed OIDC) is `BLOCKED` on `Q-026`. Three of the four acceptance clauses need only the session layer; **reauthentication needs a credential to re-present, and §12.2 rejects passwords outright** — the stub sign-in verifies nothing, so a reauthentication step built against it would confirm only that the caller can type the same email twice. That is security theatre, and AGENTS.md rule 10 forbids inventing an authority. Criteria map: secure cookie attributes and CSRF on state-changing routes → `T-070a`; reauthentication → `T-070b` (`BLOCKED`); immutable actor attribution → `T-070c`.
+
+#### T-070a — Secure session cookies and CSRF on state-changing routes
+- **Stage / Priority:** 2 / P0
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** T-061a
+- **Spec:** §15.1 ("CSRF protection and secure session configuration"), §12.2
+- **Objective:** A browser session travels in a cookie that a CSRF attack cannot use, and a state-changing request authenticated by that cookie must carry a matching CSRF token.
+- **Scope (in):** Issuing the session cookie with `HttpOnly`, `SameSite`, and `Secure` (relaxed only where there is no TLS to require — `local` and `test`); a CSRF token the client can read and echo; the state-changing dependency accepting *either* a bearer token *or* a cookie plus a matching CSRF header, and refusing a cookie without one; clearing both cookies on sign-out; renaming `requires_bearer` to say what it now does.
+- **Scope (out):** Reauthentication (`T-070b`); actor attribution (`T-070c`); moving the dashboard off bearer tokens — the client keeps working unchanged, and switching it is a separate, observable change.
+- **Acceptance criteria:**
+  1. A state-changing request authenticated by cookie with no CSRF token fails; test-proven per mutating route.
+  2. A state-changing request with a cookie and a matching CSRF token succeeds; test-proven.
+  3. The session cookie is `HttpOnly` and `SameSite`, and `Secure` in every environment that is not `local` or `test`; test-proven.
+  4. Bearer authentication keeps working for every mutating route, so nothing already built regresses; test-proven.
+- **Verification:** `uv run pytest -q tests/test_web_security.py`
+- **Files:** `backend/app/core/security.py`, `backend/app/identity/dependencies.py`, `backend/app/identity/api.py`
+- **Blocker / Q:** none
+- **Design — the CSRF token is derived, so nothing new is stored:** `sha256("csrf:" + session_token)`. Only the holder of the session token can compute it, the server recomputes it from the cookie it already read, and no column, no migration, and no server secret is involved. The `csrf:` prefix is load-bearing: `sessions.hash_token` is plain `sha256(token)` and is the primary lookup key in `user_session`, so an underived token would hand every client a copy of a database key to keep in a JavaScript-readable cookie. Double-submit *and* `SameSite=Lax` are both applied because each fails differently — one is enforced by the browser, the other here. What it does not defend against is recorded in the module docstring: a subdomain that can write cookies, whose answer is `__Host-` prefixes and therefore belongs with the deployment task that provides TLS.
+- **Completion evidence (2026-07-31):**
+  - Criterion 1 — `tests/test_web_security.py::test_no_mutation_accepts_a_cookie_without_a_csrf_token`, parametrized over **every** state-changing route the application serves (7 today), not a hand-picked three. The list comes from `T-062`'s `application_routes` walk, imported rather than rewritten; the two exclusions (`stub-sign-in`, sign-out) are named constants with their reasons attached. `::test_no_mutation_accepts_a_wrong_csrf_token` proves the check is a comparison rather than a presence test.
+  - Criterion 2 — `::test_a_cookie_with_a_matching_csrf_token_passes_the_check` and `::test_the_csrf_cookie_the_server_sets_is_the_one_that_works`, the second going through the browser's own path: sign in, read the cookie the server set, echo it. A derived token no real client could obtain would be a mechanism nobody could use.
+  - Criterion 3 — `::test_the_session_cookie_is_httponly_and_samesite`, `::test_the_csrf_cookie_is_readable_and_samesite` (readable on purpose — a client that cannot read it cannot echo it), `::test_the_session_cookie_is_not_secure_only_where_there_is_no_tls`, and `::test_signing_out_clears_both_cookies`.
+  - Criterion 4 — `::test_every_mutation_still_accepts_a_bearer_token`, parametrized over the same 7 routes, plus the 2,103-test suite: the dashboard and every pre-existing test take the bearer path and none changed.
+  - **Seven pre-existing safety tests changed their expected status, and that is declared rather than buried.** `test_a_cookie_cannot_authenticate_*` in four files asserted `401`; a bare cookie now gets `403`, because the caller *is* authenticated and what is missing is the CSRF token — sending them to sign in again would be a loop that cannot help. The property each test protects is unchanged and still asserted: a cookie alone cannot mutate anything. The `401` for *no* session is still proved by `::test_an_unauthenticated_mutation_is_still_401`. `test_no_cookie_is_set` became `::test_the_session_cookie_is_not_script_readable`, since "no cookie" was a statement about the missing defence rather than the goal.
+  - **A precedence bug this change created, found and fixed inside it:** `current_principal` read the cookie *before* the bearer header. Harmless while nothing issued a cookie; the moment sign-in did, a caller sending an explicit bearer was answered as whoever the ambient cookie belonged to — `T-151a`'s sign-out test revoked the wrong session and caught it. The explicit credential now wins. This does not weaken CSRF: an attacker on another origin cannot make a browser send an `Authorization` header, which is why a bearer caller skips the token check at all.
+  - Negative controls, all five bit and each restored green: disabling the CSRF gate → `19 failed` (every route's cookie test); reducing it to a presence check → `7 failed`, exactly the wrong-token tests, with the missing-token tests still passing — the difference between the two implementations, made visible; making the session cookie script-readable → `2 failed`, in both suites that assert it; `cookie_is_secure` returning `False` everywhere → `1 failed`; removing the `csrf:` domain separation → `1 failed`, the test that the CSRF token is not the stored session hash.
+  - Typed-contract chain: no path was added, but `requires_mutation` puts `mp_session` and `x-csrf-token` in every mutating route's signature, so the document changed. `uv run python -m scripts.export_openapi` → `wrote frontend/openapi.json (82182 bytes)`; `npm run generate:api` → regenerated; `tests/test_fixtures.py` → **18 passed** (its path list needed no change, since no path is new).
+  - `uv run pytest -q` → **2103 passed**; `ruff check`, `ruff format --check`, `mypy app` clean. Frontend `npm run test` → **161 passed**, `npm run typecheck` clean — the client still authenticates with a bearer token and was not touched. No migration.
+
+#### T-070b — Reauthentication for high-risk administration
+- **Stage / Priority:** 2 / P0
+- **Status:** `BLOCKED` (2026-07-31)
+- **Depends on:** T-061b
+- **Spec:** §15.1 ("Reauthentication or stronger confirmation for high-risk administration"), §12.2
+- **Objective:** A high-risk administrative action requires the operator to prove who they are again, not merely to still hold a session.
+- **Scope (in):** Once a managed provider exists: a re-authentication challenge (provider `prompt=login` / `max_age`) on the administrative actions §17.6 lists, and a freshness window recorded on the session.
+- **Scope (out):** Everything `T-070a` owns.
+- **Acceptance criteria:**
+  1. A high-risk administrative action taken with a session older than the freshness window is refused until the operator re-authenticates; test-proven.
+- **Verification:** `uv run pytest -q tests/test_web_security.py`
+- **Blocker / Q:** **`Q-026`** — no identity provider is named, so there is no credential to re-present. §12.2 rejects custom password authentication, and the local stub verifies nothing: a reauthentication step against it would prove only that the caller can retype an email address. Unblocks when `Q-026` is answered and `T-061b` lands.
+
+#### T-070c — Immutable actor attribution on every mutation
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-07-31)
+- **Depends on:** T-070a
+- **Spec:** §15.1 ("Immutable actor attribution in audit events"), §12.2, §17.5
+- **Objective:** The actor on every audit event comes from the resolved session and can never come from the request.
+- **Scope (in):** A structural check that no mutating handler reads an actor, approver, or user identity out of a request body or query parameter; the audit event's actor columns proven immutable once written.
+- **Scope (out):** Everything `T-070a` and `T-070b` own.
+- **Acceptance criteria:**
+  1. A mutating route that took its actor from the request body fails a test; the detector is proven to fire, not merely to exist.
+  2. An audit event's actor cannot be updated after it is written; test-proven against the migrated schema.
+- **Verification:** `uv run pytest -q tests/test_web_security.py tests/test_audit.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-07-31):**
+  - **No production code changed, and that is the finding rather than a shortcut.** Every mutating handler already took its actor from `principal`; what did not exist was anything that would notice if one stopped. This task built the detector and proved it fires, which is exactly what criterion 1 asks for. The real-handler negative control below is what makes that claim non-vacuous.
+  - **The detector, and why it has this shape.** `attribution_violations` in `tests/test_web_security.py` walks every `app/**/*.py` file, finds functions decorated with a mutating router method (`post`/`put`/`patch`/`delete`), and reports any actor-shaped keyword — `actor`, `actor_id`, `approver_id`, `approved_by`, `created_by`, `revoked_by`, `granted_by`, `decided_by` — whose expression is not rooted at `principal`. **It fails closed:** an allow-list of one safe root, not a deny-list of `request.*`, because `who = request.approver_id` then `approver_id=who` is the obvious evasion and a deny-list would wave it through. Constructing `Actor(...)` inside a mutating handler is its own violation — the actor already exists on the principal, and a second construction is a second chance to fill it from the caller's own claim. `get` handlers are out of scope deliberately: `/attention/approvals` reports the stored `approver_id` of an approval somebody else granted, which is reading history rather than attributing an action.
+  - Criterion 1 — `::test_no_mutating_handler_takes_its_actor_from_the_request` over the real source (9 handlers found; `::test_the_walk_finds_every_mutating_handler` is the guard that the walk is not empty). The detector is proven to *fire* by four tests on synthetic source: `::test_the_detector_fires_on_an_actor_taken_from_the_body`, `::test_the_detector_fires_on_a_laundered_actor`, `::test_the_detector_fires_on_an_actor_built_in_the_handler`, and — the other direction, so it is not noise — `::test_the_detector_accepts_the_session_actor` and `::test_the_detector_ignores_a_read_handler`.
+  - Criterion 2 — `tests/test_audit.py::test_the_actor_cannot_be_rewritten`, parametrized over `actor_id` and `actor_type`, against the migrated schema. The append-only trigger already refused every `UPDATE` (`::test_update_is_rejected_by_the_database`); this asserts it from the angle §15.1 names, and would survive a trigger later narrowed to particular columns.
+  - Negative controls, all three bit and each restored green: making a **real** handler take `approver_id` from the request body → `1 failed`, the detector, proving the walk reads the files it claims to rather than only its own synthetic strings; laundering the same value through a local variable → `1 failed`, so the allow-list shape earns itself; narrowing the append-only trigger in the **migration** to `BEFORE DELETE` → `4 failed` including both actor cases, which also confirms the schema under test is built from migrations rather than model metadata.
+  - `uv run pytest -q tests/test_web_security.py tests/test_audit.py` → **69 passed**. `uv run pytest -q` → **2112 passed**; `ruff check`, `ruff format --check`, `mypy app` clean. No migration, no route change, no frontend change.
 
 #### T-071 — Stage 2 exit rehearsal: non-engineer review walkthrough
-- **Stage / Priority:** 2 / P1 · **Status:** `PLANNED` · **Depends on:** T-064, T-065, T-066, T-067, T-068, T-069, T-070 · **Spec:** §19.6 Stage 2 exit gate
+- **Stage / Priority:** 2 / P1 · **Status:** `SPLIT` (2026-08-01) · **Depends on:** T-064, T-065, T-066, T-067, T-068, T-069, T-070 · **Spec:** §19.6 Stage 2 exit gate
+- **Split note (2026-08-01):** The objective names two things and only one of them needs a person: *"a written, reproducible walkthrough"* and *"recorded evidence that they did"*. **`T-071a`** is the script and the dataset, with every setup step executed against a **throwaway** database to prove it works from clean — that is checkable here, and writing it is the exercise that finds where a non-engineer gets stuck. **`T-071b`** is the rehearsal itself: a non-engineer, their confirmation, observed timings, and only then the gate. Split on the same axis as `T-164a`/`T-164b` — what the loop can prove versus what needs a human. **`T-070b` does not block the script.** It adds reauthentication to *high-risk administration*; a reviewer completing candidate and message review never performs one, so nothing in the walkthrough changes when it lands. It does still block `T-071b`, because the gate covers Stage 2 as a whole. **Gate G-10 is not evaluated by `T-071a`** — the checkpoint's constraint stands, and `T-071b` is where the gate is looked at.
 - **Objective:** A written, reproducible walkthrough letting a non-engineer complete candidate and message review end to end on synthetic data, plus recorded evidence that they did.
 - **Acceptance:** `docs/stage2-exit-evidence.md` contains the script, the synthetic dataset used, observed timings, and the reviewer's confirmation; every step works from a clean seeded database; gate **G-10** is then marked open.
 - **Verification:** full canonical command set plus the documented walkthrough. · **Files:** `docs/stage2-exit-evidence.md` · **Q:** `Q-005` for a real reviewer identity; a synthetic operator account suffices for the rehearsal.
+- **Dependency note (2026-07-31, `T-069c`'s cycle):** stays `PLANNED`, and the reason is now a single named thing. Every dependency is `DONE` except **`T-070`**, which is `SPLIT`: `T-070a` (cookies and CSRF) and `T-070c` (actor attribution) are `DONE`, and **`T-070b` (reauthentication for high-risk administration) is `BLOCKED` on `Q-026`** — §12.2 rejects passwords and the local stub verifies nothing, so there is no credential to re-present until an identity provider is named. **Gate G-10 is therefore reachable only once the user answers `Q-026`, or decides explicitly that §15.1's reauthentication clause is out of scope for Stage 2 and records that decision.** Do not promote this task without one of those two things.
 
 
+#### T-071a — The written, reproducible Stage 2 walkthrough
+- **Stage / Priority:** 2 / P1
+- **Status:** `BLOCKED` — on `T-172` alone; `T-169`, `T-170`, and `T-171` closed 2026-08-01
+- **Blocked note (2026-08-01, second attempt):** The setup path was run for real against a throwaway database. Steps 2–4 work: `alembic upgrade head`, `seed_synthetic`, then `import_prospects` → **`created: 14, reused: 1, rejected: 0`**, 12 accounts and 13 contacts. Then it stops, twice over. **`candidates: 0`** — `import_csv` produces prospect identity and stops by design (§8.3), and the code that turns imported rows into campaign memberships exists **only inside `tests/test_shadow_slice.py`**, so the worker has nothing to do and no queue appears (**`T-169`**). And **the only user is the seeded approver, who holds no roles at all** — the six roles are seeded by migration, but nothing grants one, so a sign-in that succeeds still sees `403` everywhere (**`T-170`**). Both filed rather than absorbed; a walkthrough that ends at an empty queue nobody can log into is not the thing this task is for.
+- **Depends on:** T-064, T-065, T-066, T-067, T-068, T-069, T-070a, T-168
+- **Blocked note (2026-08-01):** Claimed, then released within the same cycle. Walking the setup path before writing it down found that **there is no way for a non-engineer to reach a review queue at all.** `seed_synthetic` loads products, campaigns, and claims; `python -m app.worker` drains jobs; but nothing imports the bundled `app/fixtures/prospects.csv` into a persistent database — the only code that does it is inside `tests/test_shadow_slice.py`, against a throwaway session that rolls back. So the walkthrough's step 4 would have been "write some Python", which is precisely the reader this document exists for. Filed as **`T-168`** rather than absorbed: the script is this task, and the missing command is not.
+- **Spec:** §19.6 Stage 2 exit gate, §12.3
+- **Objective:** A script a non-engineer can follow end to end on synthetic data, every setup step of which has been executed from a clean database rather than written from memory.
+- **Scope (in):** `docs/stage2-exit-evidence.md` carrying the script and the synthetic dataset it uses; a scripted run of the setup path against a **throwaway** database (created and dropped, never the developer's own) proving migrate → seed → pipeline → sign-in → the reviewer's routes all answer; the sections the rehearsal will fill left explicitly empty rather than plausibly pre-filled.
+- **Scope (out):** The rehearsal, the reviewer's confirmation, observed timings, and **any evaluation of gate G-10** — all `T-071b`. Changing the dashboard: if the walkthrough finds a gap, it is filed as a task, not fixed here.
+- **Acceptance criteria:**
+  1. Every setup command in the script was executed and its observed output recorded; nothing reconstructed.
+  2. The run happens against a database created for it and dropped afterwards, so it proves "from clean" and touches nothing the developer has.
+  3. The document states plainly that the rehearsal has not happened and the gate is not evaluated.
+- **Verification:** the scripted run itself; `uv run pytest -q`
+- **Files:** `docs/stage2-exit-evidence.md`
+- **Blocker / Q:** none
+
+#### T-168 — Nothing imports the synthetic prospects into a real database
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-040, T-042
+- **Spec:** §19.6 Stage 2 exit gate, §9.3
+- **Found by:** `T-071a`, walking the setup path before writing it down. `seed_synthetic` loads the campaign world and `python -m app.worker` drains the pipeline, but the step between them — importing `app/fixtures/prospects.csv` — exists **only inside `tests/test_shadow_slice.py`**, on a session that rolls back. A developer can reach a review queue by writing Python; nobody else can reach one at all.
+- **Why it matters:** gate **G-10** asks whether a non-engineer can complete reviews unaided. Today they cannot even get a queue to review, and that is invisible from the code because the pipeline *is* tested end to end — in a transaction nobody keeps.
+- **Objective:** One command loads the synthetic prospects into the configured database.
+- **Scope (in):** `python -m app.cli import_prospects` alongside `seed_synthetic`, reusing `prospects.imports.import_csv` and the same environment guard; it commits; it reports what it created, reused, and rejected; running it twice is a no-op, because `import_batch.content_hash` is unique and the walkthrough will be run more than once.
+- **Scope (out):** Any new import logic — `T-042` owns that and this only calls it. Any non-synthetic file: the command takes no path argument, so it cannot be pointed at real prospect data (AGENTS.md rule 1).
+- **Acceptance criteria:**
+  1. The command imports the bundled CSV into the configured database and commits; test-proven.
+  2. Running it twice creates nothing the second time and says so, rather than failing; test-proven.
+  3. It is refused outside `local`/`test`, before the database is touched — the same guard `seed_synthetic` has; test-proven.
+  4. It takes no file argument, so it cannot import anything but the synthetic fixture.
+- **Verification:** `uv run pytest -q tests/test_cli.py tests/test_import.py`
+- **Files:** `backend/app/cli.py`, `backend/tests/test_cli.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `python -m app.cli import_prospects` loads `app/fixtures/prospects.csv` into the configured database and commits, reusing `T-042`'s `import_csv` and `seed_synthetic`'s environment guard. It is the step between `seed_synthetic` and `python -m app.worker` that only existed inside a rolled-back test session.
+  - Criterion 1 — `tests/test_cli.py::test_importing_prospects_commits_them` reads the rows back through a **separate engine**, so it proves the commit rather than the flush. `::test_the_imported_contacts_carry_their_provenance` is the one that matters downstream: `T-144b` refuses a candidate with no approved source basis, so an import that did not stamp the batch would produce a database in which nothing is ever eligible — a walkthrough that ends in an empty queue for a reason nobody could see.
+  - Criterion 2 — `::test_importing_twice_changes_nothing` and `::test_seeding_and_importing_compose`. The walkthrough will be run more than once, and `import_batch.content_hash` is unique, so the second run has to report `already_imported` rather than fail on the constraint.
+  - Criterion 3 — `::test_importing_is_refused_outside_a_seedable_environment`, parametrized over `production` and `staging`, and it names a database that **does not exist**: the command can only return `EXIT_REFUSED` by refusing before it connects, which is the same shape `test_fixtures.py` uses for `seed_synthetic`.
+  - Criterion 4 — `::test_the_command_takes_no_file_argument`. A path argument is how a developer convenience becomes the thing that imported a real list into a synthetic-only database (AGENTS.md rule 1).
+  - **The CLI had no test at all** before this — `seed_synthetic`'s underlying function was well covered, its *command* was not. Each test creates and drops its own database, because these commands commit and the session-scoped database every other suite shares is rolled back per test; a committed import would have leaked into every later test that assumed an empty one.
+  - **A defect found while testing, fixed in the command rather than worked around in the test:** `import_csv` writes an audit event, every consequential action needs a correlation id (§17.5), and nothing bound one — so the first run of the new command raised `MissingCorrelationId`. A developer following the walkthrough would have got a stack trace instead of an import. The command now binds one, as `worker.py` and the request middleware do at their own entry points.
+  - Negative controls — **four, each bit and each restored green**: the commit removed → 4 failed; the environment guard skipped → 2 failed; a file argument added → 1 failed; the correlation id unbound → 4 failed. The commit control first tripped its own uniqueness assertion (`session.commit()` occurs twice in the file, once per command) and was re-anchored rather than allowed to land on whichever came first.
+  - `uv run pytest -q` → **2273 passed** (2265 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, no migration, no route change; the frontend is untouched.
+#### T-169 — Importing prospects creates no campaign candidates
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-042, T-044, T-168
+- **Spec:** §8.3 steps 1–2, §9.3, §14.2
+- **Found by:** `T-071a`, running the setup path. `import_csv` creates accounts, contacts, and contact points and stops — deliberately, because §8.3 makes membership `campaigns`' business and `ImportRow` ignores the CSV's `campaigns` column on purpose. But **nothing in production picks it up.** `campaigns/jobs.py` says "import commits the batch and enqueues the first membership jobs", and the code that does it lives in `tests/test_shadow_slice.py::_rows_with_campaigns`, not in `app/`.
+- **Why it matters:** a freshly set-up database has 13 contacts and **zero** candidates, so the worker idles and the review queue is empty. Gate **G-10** asks whether a non-engineer can complete reviews; today there is nothing to review, and the pipeline tests hide it because they enqueue the jobs themselves.
+- **Objective:** Importing the synthetic prospects produces campaign candidates, through production code.
+- **Scope (in):** A `campaigns`-owned function that reads the CSV's `campaigns` column and enqueues one membership job per (row, campaign) — the shape `test_shadow_slice.py` already proves correct, moved into `app/` and called after the import commits; the correlation-id-per-candidate property that test relies on; `python -m app.cli import_prospects` calling it; tests that a fresh import yields candidates.
+- **Scope (out):** Changing what membership *decides* (`T-044` owns that). Any non-synthetic source.
+- **Acceptance criteria:**
+  1. After `import_prospects` and a worker drain, candidates exist and at least one reaches `review_pending`; test-proven against a committed database, not a rolled-back session.
+  2. Each candidate keeps its own correlation id, as `test_shadow_slice.py` asserts today.
+  3. `tests/test_shadow_slice.py` uses the production function rather than its own copy, or says why not.
+- **Verification:** `uv run pytest -q tests/test_shadow_slice.py tests/test_cli.py`
+- **Files:** `backend/app/campaigns/jobs.py` or a sibling, `backend/app/cli.py`, tests
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `app/intake.py::enqueue_memberships_for_import` reads the CSV's `campaigns` column and enqueues one membership job per (row, campaign); `python -m app.cli import_prospects` calls it after the import and before the commit. **The boundary checker chose the module.** The obvious home was `campaigns` — membership is its business — but `prospects` already imports `campaigns`, so a `campaigns` module importing `prospects` closes a package cycle and `test_no_import_cycles` refused it. What it actually is, is a *composition*, so it sits at the top level beside `job_types.py`, which records the same reasoning.
+  - Criterion 1 — `tests/test_cli.py::test_the_imported_rows_become_candidates_that_enter_the_pipeline`, against a **committed** database. That is why the gap was invisible: `tests/test_shadow_slice.py` proves the same pipeline inside a transaction nobody keeps, and enqueues the membership jobs itself. `::test_importing_enqueues_membership_work` covers the enqueue on its own.
+  - **Criterion 1 met more narrowly than its wording, with the reason.** It said "at least one reaches `review_pending`"; the test asserts candidates exist and the worker *advances* them (`eligible`/`research_pending`/beyond). Reaching `review_pending` additionally needs the Stage 1 fixture source adapter and the fake model factory, and **no entry point registers either** — the slice does it itself and says so ("`app/worker.py` registers nothing"). Asserting the stronger thing would have failed for a reason this task is not about. Filed as **`T-172`**.
+  - Criterion 2 — `::test_each_candidate_keeps_its_own_correlation_id`. The id is `import-<batch>-<row>-<slug>`: per candidate, and traceable back to the import that produced it. §8.1 makes the two judgements on a both-campaigns row independent, so one shared id would put two histories on one trail.
+  - Criterion 3 — **not done, and recorded rather than skipped quietly**: `tests/test_shadow_slice.py` still uses its own copy. Switching it over changes the test behind a passed gate and deserves its own diff; filed as **`T-173`**. The production function was written from that copy, so they agree today.
+  - **Two more defects found and fixed in the command, not around it:** the CLI never called `register_job_types()`, so the first enqueue raised `UnknownJobType` — `worker.main` and `create_app` both do it and the CLI now does too; and the walkthrough needs the campaigns *started*, which `seed_synthetic` deliberately does not do (§17.6 — starting one is an operator act) and which no command offers. The test starts them the way the slice does; the missing command is **`T-171`**.
+  - Negative controls — **four; three bit immediately and each restored green**: the import enqueueing nothing → 7 failed (the state this task came from); one correlation id shared by every candidate → 1 failed; the registry left unpopulated → 7 failed. **The fourth is the finding:** a control on the `if not slugs: continue` guard changed nothing, because the per-slug loop already iterates nothing — the guard was **dead**, reading as protection while providing none. It was deleted, the reason recorded where a reader will look, and the control re-aimed at the behaviour, where it now bites. The test moved with it, from asserting the parser to asserting that nothing is enqueued.
+  - `uv run pytest -q` → **2283 passed** (2279 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, no migration, no route change; the frontend is untouched.
+
+#### T-171 — No command starts a campaign, and seeded ones are paused
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-015, T-168
+- **Spec:** §17.6 (operational controls), §19.6 Stage 2 exit gate
+- **Found by:** `T-169`. `seed_synthetic` seeds campaigns **paused** on purpose — starting one is a deliberate operator act, and seeding them running would quietly remove the control the pause exists to provide. But nothing offers that act outside a test, so a set-up database produces candidates for no campaign and the walkthrough stalls with no error to read.
+- **Objective:** An operator can start a seeded campaign from the command line.
+- **Scope (in):** A command that clears `paused` for a **named** campaign and audits it as `campaign.resumed`, the way `tests/test_shadow_slice.py::_start_campaigns` does; refused outside `local`/`test`. Naming the campaign keeps starting one a decision rather than a side effect.
+- **Scope (out):** Pausing from the dashboard — `T-069b`'s switches own that.
+- **Acceptance criteria:**
+  1. The named campaign is no longer paused and an audit event records who started it; test-proven.
+  2. An unknown slug refuses without changing anything; test-proven.
+  3. Refused outside `local`/`test` before the database is touched; test-proven.
+- **Verification:** `uv run pytest -q tests/test_cli.py`
+- **Files:** `backend/app/cli.py`, `backend/tests/test_cli.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `python -m app.cli start_campaign <slug>` clears a **named** campaign's pause and audits it as `campaign.resumed`, refusing outside `local`/`test` before the database is touched. Naming the campaign is the point: starting every seeded one at once would make it a side effect of running a script rather than a decision about one campaign.
+  - Criterion 1 — `tests/test_cli.py::test_starting_a_campaign_clears_its_pause_and_is_audited`. §3.5 wants the act that makes the pipeline produce anything to be reviewable, which is what `tests/test_shadow_slice.py::test_starting_the_campaigns_is_audited` says of the slice's own version.
+  - Criterion 2 — `::test_starting_an_unknown_campaign_refuses_and_changes_nothing`, which checks every campaign is still paused afterwards rather than only the return code.
+  - Criterion 3 — `::test_starting_is_refused_outside_a_seedable_environment`, naming a database that does not exist so it can only pass by refusing before it connects. `::test_the_command_requires_a_slug` pins the argument.
+  - **A real ordering fact, found by a test that failed for the right reason.** The first version asserted that starting a campaign *after* importing produced candidates. It does not: a membership job is consumed once, so one enqueued while the campaign was paused succeeds, creates nothing, and is gone. The premise was wrong, not the product. Split into `::test_a_paused_campaign_produces_no_candidates` and `::test_starting_the_campaign_first_is_what_produces_candidates`, so the walkthrough's ordering — seed, **start**, import, drain — is now a fact rather than a habit.
+  - Negative controls — **five, each bit and each restored green**: the pause never cleared → 2 failed; the act audited under a name nobody looks for → 1 failed; an unknown slug accepted → 1 failed; the command starting whichever campaign it found first rather than the named one → 1 failed; the environment guard's `return` removed → 2 failed. The audit control's first version broke the call itself and errored at collection — a bite, but not proof the assertion fires — so it was re-aimed at the action name.
+  - `uv run pytest -q` → **2290 passed** (2283 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, no migration, no route change; the frontend is untouched.
+
+#### T-172 — No entry point registers the Stage 1 fixture adapters
+- **Stage / Priority:** 2 / P1
+- **Status:** `BLOCKED` — needs an architecture decision; no `Q-###` exists for it. **The options are written up as [ADR-027](docs/adr/ADR-027-where-a-development-process-may-register-the-fixture-source-adapter.md) (`PROPOSED`, `T-174`), which recommends (b); accepting one there unblocks this.**
+- **Blocked note (2026-08-01):** Attempted, and **the invariants refuse every shape of it.** Two of them, and together they close the door: `tests/test_pipeline_jobs.py::test_no_production_module_registers_an_adapter` says *nothing under `app/`* may call `register_source_adapter` — "registering it is the CLI's or a test's act" — and `tests/test_module_boundaries.py`'s `FORBIDDEN_FOR_ALL` says nothing may import `app.worker`. So the CLI, the one sanctioned caller, cannot run the worker, and the worker cannot register an adapter. A first attempt registered it in `worker.py` from a configured directory (avoiding the `app.fixtures` import `T-040` forbids) and the adapter test caught it; that change is fully reverted, including the setting and its `.env.example` entry.
+- **The decision needed, precisely:** may a development process register the fixture source adapter, and where? Three shapes exist and each costs something. **(a)** Widen the adapter invariant to allow one composition module under `app/`, guarded on `app_env` — cheapest, and it weakens the rule that keeps fixture wiring out of production paths (§15.3, gate **G-06**). **(b)** Let `cli.py` import `app.worker`, or move the loop somewhere both can reach — keeps the adapter rule intact, changes what an entry point is. **(c)** Accept that a local worker cannot complete research, and say so in the walkthrough — costs nothing and leaves gate **G-10** asking a non-engineer to review an empty queue. This is architecture, so it is not the loop's to improvise (AGENTS.md rule 10); an ADR should record whichever is chosen and why the other two were not.
+- **Depends on:** T-046, T-050, T-168
+- **Spec:** §19.6 Stage 1/2, §15.3, §18.4
+- **Found by:** `T-169`. With campaigns started and candidates created, every `research.capture_evidence` job dead-letters: *"no source adapter registered under 'fixture' ... Stage 1 registers the fixture adapter from the CLI or a test"*. It does not. `tests/test_shadow_slice.py` registers both the fixture source adapter and the fake model factory itself, and its comment says why: **`app/worker.py` registers nothing**.
+- **Why it matters:** a real worker cannot complete research or drafting, so nothing reaches `review_pending` outside a test. It is the last thing between a set-up database and a review queue, and the error appears only in a dead job's reason — a reader following the walkthrough sees a queue that never fills.
+- **Objective:** A locally-run worker completes the pipeline on synthetic fixtures.
+- **Scope (in):** Registering the fixture source adapter and the fake model factory where a development process picks them up, and **only** where `app_env` is `local`/`test` — a production process registering fixtures is the failure mode this must not create. `T-050`'s second lock (`allow_real_model_provider`) is unaffected.
+- **Scope (out):** Any real source or provider — `Q-003`, `Q-012`, gates **G-03**/**G-06**.
+- **Acceptance criteria:**
+  1. After the documented commands and a worker drain, at least one candidate reaches `review_pending`; test-proven against a committed database.
+  2. Nothing registers a fixture adapter outside `local`/`test`; test-proven.
+- **Verification:** `uv run pytest -q tests/test_cli.py tests/test_shadow_slice.py`
+- **Files:** `backend/app/worker.py` or a composition module, `backend/tests/test_cli.py`
+- **Blocker / Q:** none
+
+#### T-173 — The shadow slice still carries its own copy of the membership enqueue
+- **Stage / Priority:** 2 / P3
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-169
+- **Spec:** §8.3, §19.6 Stage 1
+- **Found by:** `T-169`, which left this deliberately. `app/intake.py` was written *from* `tests/test_shadow_slice.py`'s loop, so the two agree today — and two copies of the same rule are how they stop agreeing.
+- **Why it was not done there:** the slice is Stage 1 exit evidence (**G-02**), and changing the test behind a passed gate deserves its own diff rather than riding along in a task about the import path.
+- **Objective:** One definition of "which campaigns does this row join".
+- **Scope (in):** the slice calling `enqueue_memberships_for_import`; its correlation-id assertions still passing (they assert distinctness, which the production format satisfies); `docs/stage1-exit-evidence.md` updated if any observed number moves.
+- **Scope (out):** Changing what the slice proves.
+- **Acceptance criteria:**
+  1. The slice uses the production function and its assertions still hold, or the reason it cannot is recorded.
+  2. Every number in `docs/stage1-exit-evidence.md` still matches an observed run.
+- **Verification:** `uv run pytest -q tests/test_shadow_slice.py`
+- **Files:** `backend/tests/test_shadow_slice.py`, `docs/stage1-exit-evidence.md`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - `tests/test_shadow_slice.py` now calls `app/intake.py::enqueue_memberships_for_import` instead of its own loop, and `_rows_with_campaigns` — the helper that existed only to feed it — is gone. One definition of "which campaigns does this row join", and the one under test is the one that runs.
+  - Criterion 1 — `uv run pytest -q tests/test_shadow_slice.py` → **34 passed**, unchanged. The correlation ID's *shape* changed to `import-<batch>-<row>-<slug>`, which nothing asserts: the tests read IDs back off the audit events and check only that they are distinct per candidate, which the production format satisfies.
+  - Criterion 2 — **re-observed rather than assumed.** The slice asserts `count > 0`, not the exact numbers `docs/stage1-exit-evidence.md` quotes, so a probe was appended to the slice module, run, and the file restored as bytes. Observed: `Account 12, Contact 13, ContactPoint 13, CampaignCandidate 15, EvidenceSnapshot 4, MessageRevision 5, Job 64`; candidates `approved 5, ineligible 10`; revisions `review_pending 5`. **Every number matches the document**, so it needed no edit — which is the result worth having, since a changed number would have meant the switch altered Stage 1's exit evidence.
+  - Negative controls — **two, both aimed at `app/intake.py` because the point of this task is that the slice exercises the production function; each bit and each restored green**: the production function enqueuing nothing → `1 failed, 9 passed, 24 errors` (had the slice still passed, it would have meant it was not really using it); one correlation ID shared by every candidate → 1 failed, caught by the slice's own distinctness test through the production code.
+  - `uv run pytest -q` → **2290 passed**, unchanged from before the switch; `ruff check`, `ruff format --check`, `mypy app` clean. No production code changed at all — this moved a caller.
+#### T-170 — No user holds a role, so nobody can actually use the dashboard
+- **Stage / Priority:** 2 / P1
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-012, T-061a, T-062
+- **Spec:** §12.1 (roles), §12.2, §15.1, §19.6 Stage 2 exit gate
+- **Found by:** `T-071a`, running the setup path. The six roles are seeded by migration `ba1a2b2420a4`, and `seed_synthetic` creates exactly one user — the approver — with **no roles**. `stub_sign_in` refuses an unknown email and never creates anybody, correctly (`Q-005`/`Q-026` own the roster). So on a freshly set-up database there is no email that signs in to anything useful: the session is issued and every route answers `403`.
+- **Why it matters:** it is the second half of why a non-engineer cannot reach a review queue. It is also invisible from the tests, which build their own users and grant roles inline.
+- **Objective:** One command creates a local reviewer who can actually sign in and review.
+- **Scope (in):** `python -m app.cli grant_local_reviewer` beside the other two: creates (or reuses) a synthetic reviewer user on an IANA-reserved domain and grants the `operator_reviewer` role; refused outside `local`/`test` before touching the database; idempotent; prints the email to sign in with. The granting actor is the CLI service identity (ADR-025).
+- **Scope (out):** Any real roster, any provider, any password — §12.2 rejects passwords and `Q-026` owns the real roster. Granting administrative roles: the operations panel is `system_administrator` only, and a convenience command must not hand that out.
+- **Acceptance criteria:**
+  1. After the command, the named user exists, holds `operator_reviewer`, and `stub_sign_in` issues them a session; test-proven.
+  2. Running it twice grants nothing twice; test-proven.
+  3. It is refused outside `local`/`test` before the database is touched; test-proven.
+  4. It grants no role beyond `operator_reviewer`; test-proven.
+- **Verification:** `uv run pytest -q tests/test_cli.py tests/test_identity.py`
+- **Files:** `backend/app/cli.py`, `backend/tests/test_cli.py`
+- **Blocker / Q:** none. `Q-005`/`Q-026` own the *real* roster; this is a local development convenience and refuses to run anywhere else.
+- **Completion evidence (2026-08-01):**
+  - `python -m app.cli grant_local_reviewer` creates (or reuses) `synthetic-reviewer@example.invalid` and grants it `operator_reviewer`, refusing outside `local`/`test` before the database is touched. The granting actor is the CLI service identity (ADR-025).
+  - Criterion 1 — `tests/test_cli.py::test_the_local_reviewer_can_sign_in_and_holds_the_reviewer_role` runs the command and then a **real `stub_sign_in` followed by `resolve`**, asserting the resolved principal's roles. Asserting the row existed would not have caught the gap this task came from: the seeded approver *is* a row, and signing in as them yields a perfectly valid session that sees `403` everywhere.
+  - Criterion 2 — `::test_granting_twice_grants_nothing_twice`. `uq_user_role` would refuse the second grant, so the command checks first and a re-run is a no-op rather than an integrity error the reader has to interpret.
+  - Criterion 3 — `::test_granting_is_refused_outside_a_seedable_environment`, parametrized over `production` and `staging`, naming a database that does not exist so it can only pass by refusing before it connects.
+  - Criterion 4 — `::test_the_reviewer_gets_no_role_beyond_reviewing`. The operations panel is `system_administrator` only, and a convenience command that handed that out would be a way to acquire tier-5 authority by running a script. `::test_the_reviewer_email_can_never_be_delivered_to` pins the IANA-reserved domain.
+  - Negative controls — **five, each bit and each restored green**: the role never granted → 3 failed (the exact state this task found); the role changed to `system_administrator` → 2 failed; the commit removed → 3 failed; the environment guard's `return` removed → 2 failed; a deliverable `@example.com` domain → 1 failed. The commit control first tripped its own uniqueness assertion — `session.commit()` now occurs three times in `cli.py`, once per command — and was re-anchored rather than allowed to hit the wrong one.
+  - `uv run pytest -q` → **2279 passed** (2273 before); `ruff check`, `ruff format --check`, `mypy app` clean. No schema change, no migration, no route change; the frontend is untouched.
+  - **Not claimed:** that a reviewer can now complete a review. They still have nothing to review — `T-169` is the other half, and `T-071a` stays blocked on it.
+#### T-174 — The `T-172` decision has nowhere a reader would look for it
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** §16 (decision records), §19.6 Stage 2 exit gate
+- **Found by:** two consecutive idle cycles. `T-172` is `BLOCKED` on an architecture decision and the analysis behind it — which invariants forbid what, and what each way out costs — sits in a task block. `docs/adr/` is where this repository puts decisions, and a reader deciding this one should not have to reconstruct the constraints from a ledger note.
+- **Why it matters:** the decision is the single thing between here and gate **G-10**: without it a local worker cannot complete research, so `T-071a` cannot be written and `T-071b` cannot run. Every cycle it stays unwritten, the analysis is one more cycle further from the person who has to act on it.
+- **Objective:** The decision is stated where decisions live, with the options costed, and decided by nobody.
+- **Scope (in):** A **`PROPOSED`** ADR — the status §0.1 defines for exactly this — naming the two invariants that close the door, the three ways out with what each costs, and a recommendation; the ADR index; a check that every local ADR file is indexed and that this one still reads `PROPOSED`.
+- **Scope (out):** **Choosing.** Nothing is applied, no invariant is amended, no code changes. `T-172` stays `BLOCKED` until the user accepts one option, which is the point of writing it as `PROPOSED` rather than `ACCEPTED`.
+- **Acceptance criteria:**
+  1. An ADR under `docs/adr/` records the constraint, the three options with their costs, and a recommendation, with status `PROPOSED`.
+  2. It is in the index, and a test fails if any local ADR is not; test-proven.
+  3. A test fails if it is silently promoted to `ACCEPTED` without the user deciding; test-proven.
+  4. No source file, invariant, or task status outside this one changes.
+- **Verification:** `uv run pytest -q tests/test_adr_index.py`
+- **Files:** `docs/adr/`, `docs/adr/README.md`, `backend/tests/test_adr_index.py`
+- **Blocker / Q:** none — writing down a choice is not making it.
+- **Completion evidence (2026-08-01):**
+  - [ADR-027](docs/adr/ADR-027-where-a-development-process-may-register-the-fixture-source-adapter.md), status **`PROPOSED`**. It names the two invariants that close the door — nothing under `app/` may call `register_source_adapter`, nothing may import `app.worker` — records that `T-172`'s attempt was caught because the adapter rule is written more broadly than its own rationale (it forbids the *call*, not the *import*), and costs the three ways out.
+  - **It recommends (b) and explains why the constraint is the argument.** Moving `PassResult` and `one_pass` into a composition module and adding `python -m app.cli run_worker` amends **no invariant**: nothing imports `app.worker`, nothing under `app/` registers an adapter, and the CLI keeps its existing licence to touch `app.fixtures`. (a) costs a weakened rule, which is not reviewable the way moved code is; (c) writes around the gate rather than passing it.
+  - Criterion 1 — the ADR exists with the constraint, three costed options, and a recommendation. Criterion 4 — **no source file changed**: this cycle touched the ADR, the index, one new test file, and this ledger.
+  - Criterion 2 — `tests/test_adr_index.py::test_every_local_adr_is_in_the_index`, parametrized over every `ADR-*.md`, plus `::test_the_index_lists_nothing_that_does_not_exist` for the other direction. `::test_there_are_local_adrs_to_check` is the guard on the guard: an empty glob would make every parametrized check vacuously true.
+  - Criterion 3 — `::test_a_proposal_is_not_promoted_without_a_decision`. The loop wrote this proposal, so a later edit promoting it to `ACCEPTED` would silently turn a question into an answer the loop gave itself. That is a test, not a convention.
+  - Negative controls — **four, each bit and each restored green**: the proposal promoted to `ACCEPTED` → 1 failed; a status outside §0.1's vocabulary → 2 failed; the ADR left out of the index → 1 failed; the index pointing at a file that is not there → 2 failed.
+  - `uv run pytest -q` → **2313 passed** (2290 before); `ruff check`, `ruff format --check`, `mypy app` clean.
+#### T-175 — The adapter invariant forbids the caller its own docstring names
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** §18.2, §15.3, §16
+- **Found by:** re-reading `ADR-027` before another idle cycle. Its option (b) claims to amend **no** invariant. That is wrong. `tests/test_pipeline_jobs.py::test_no_production_module_registers_an_adapter` walks `app.rglob("*.py")` and excludes only `registry.py`, so `app/cli.py` is caught — while the same test's docstring says *"registering it is the CLI's or a test's act"*. Proven rather than read: adding a `register_source_adapter(` call to `cli.py` fails it with `production modules registering a source adapter: ['cli.py']`, and the probe was reverted.
+- **Why it matters:** a user is being asked to choose between three options on the strength of that claim. It also means the invariant has been protecting something narrower than it says: the *rule* is "no production path wires fixtures", the *implementation* is "no file under `app/` at all", and the gap between them is where `T-172` got stuck.
+- **Objective:** The proposal a reader decides on is accurate, and the defect is recorded where somebody fixing it will look.
+- **Scope (in):** Correcting `ADR-027`'s option (b) analysis and its recommendation reasoning; an `xfail(strict=True)` test beside the invariant naming `T-172`, so the day the exclusion is added the marker fails as `XPASS` and gets removed rather than lingering.
+- **Scope (out):** **Fixing the invariant.** Excluding `cli.py` is part of whichever option is accepted, and accepting one is the user's act — the ADR stays `PROPOSED`.
+- **Acceptance criteria:**
+  1. `ADR-027` states what option (b) actually costs, and the correction is visible as a correction rather than a silent edit.
+  2. The ADR is still `PROPOSED`; no option is chosen; no invariant changes; test-proven.
+  3. An `xfail(strict=True)` test records the defect beside the invariant and names `T-172`.
+- **Verification:** `uv run pytest -q tests/test_pipeline_jobs.py tests/test_adr_index.py`
+- **Files:** `docs/adr/ADR-027-*.md`, `backend/tests/test_pipeline_jobs.py`
+- **Blocker / Q:** none — correcting an analysis is not choosing an option.
+- **Completion evidence (2026-08-01):**
+  - **The claim was wrong and is now corrected in place.** `ADR-027` said option (b) "amends no invariant"; it amends the adapter walk, which catches `app/cli.py`. Proven before writing anything: a `register_source_adapter(` call added to `cli.py` fails `test_no_production_module_registers_an_adapter` with `production modules registering a source adapter: ['cli.py']`, and the probe was reverted.
+  - **The finding is a pair, not a singleton.** Anchoring a control uniquely exposed a second invariant with the identical mismatch: `test_no_production_module_installs_a_fake_adapter` also says *"installing it is the CLI's or a test's act"* and also walks every file under `app/`. A local worker needs the fake model factory as well as the source adapter, so covering one would have left `T-172` blocked on the other.
+  - Criterion 1 — the ADR now states what (b) costs, and the correction is a **visible** correction: a status-line note, an explicit "this was missed in the first version" bullet, and a recommendation section rewritten to compare *which amendment* rather than claim one is free. The case for (b) survives and sharpens: it makes a test agree with its own recorded rationale, where (a) creates an exception that rationale never contemplated.
+  - Criterion 2 — `tests/test_adr_index.py::test_a_proposal_is_not_promoted_without_a_decision` still passes: the ADR is `PROPOSED`, no option is chosen, and no invariant changed.
+  - Criterion 3 — `::test_the_adapter_invariants_permit_the_caller_their_docstrings_name`, `xfail(strict=True)`, parametrized over both invariants and naming `T-172`. When the exclusion lands it flips to `XPASS`, strict mode fails the run, and the marker gets deleted rather than lingering over a healed defect.
+  - **The detector caught itself first.** Its initial version sliced the file on the invariant's *name* — and passed, because this test's own source contains that name, so the slice ran past the invariant into its own docstring and found its own `cli.py`. `strict=True` reported it as `XPASS`. Re-bounded with `ast.unparse` on the located `FunctionDef`: a detector that can read itself is not a detector.
+  - Negative controls — **two, and the second is a finding**: excluding `cli.py` as the fix would → `XPASS(strict)`, 1 failed, proving the marker is load-bearing rather than permanently red; reverting the ADR's correction → **passed at first**, because nothing held criterion 1. `::test_the_proposal_records_that_it_was_corrected` now asserts the claim itself (that (b) is not sold as free), and the control bites → 1 failed. Both restored green.
+  - `uv run pytest -q` → **2314 passed, 2 xfailed** (2313 passed before); `ruff check`, `ruff format --check`, `mypy app` clean. No production code changed.
+#### T-176 — The header quotes stale test counts and a superseded blocker
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** §19.6, process.md §3
+- **Found by:** checking the header against reality instead of reading past it. Row 11 quotes the frontend suite three times — "161 frontend tests", "182 frontend tests", "the 182 tests" — and the suite is **185**. Its bolded sentence still says the remaining Stage 2 work is `T-070b` and `T-071`, which omits **`T-172`**, the item actually blocking the gate since 2026-08-01.
+- **Why it matters:** this is the row the audit caught claiming "no dashboard code exists" months of work later, and the loop's own instructions single it out. A reader who trusts it gets a wrong count and a wrong blocker; a reader who learns not to trust it stops reading the one summary the ledger has.
+- **The drift class, not just the instance:** a *current-state* summary that quotes point-in-time numbers is stale the moment the next test lands. Completion evidence is where dated numbers belong — it says when they were observed.
+- **Objective:** Row 11 is true, and this kind of staleness fails a test rather than waiting for an audit.
+- **Scope (in):** Correcting the counts and the blocker sentence; removing point-in-time test counts from the row entirely and pointing at the evidence documents instead; a test that the header quotes no test count, that its `IN_PROGRESS` row agrees with the task blocks, and that every task it names exists.
+- **Scope (out):** Rewriting the row's substance — what it records about `T-070a`, `T-069`, the ADRs and the approver work is accurate and stays. This corrects and guards; it does not re-narrate.
+- **Acceptance criteria:**
+  1. Row 11 quotes no test count, and names `T-172` among what remains; test-proven.
+  2. The header's `IN_PROGRESS` row agrees with the task blocks — *none*, or a task that exists and holds that status; test-proven.
+  3. Every `T-###` the header names exists in the ledger; test-proven.
+- **Verification:** `uv run pytest -q tests/test_ledger_header.py`
+- **Files:** `tasks.md`, `backend/tests/test_ledger_header.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **Measured before editing.** `npm run test` → **185 passed**, against a header quoting 161, 182, and "the 182 tests". The bolded sentence naming the remaining Stage 2 work still listed only `T-070b` and `T-071`, omitting `T-172`, which has blocked the gate since earlier today.
+  - **The counts are gone rather than corrected.** Replacing 182 with 185 would have been stale again at the next test. A current-state summary that quotes point-in-time numbers is a drift generator; the row now says so and points at the completion evidence and exit-evidence documents, which date what they observed.
+  - Criterion 1 — `tests/test_ledger_header.py::test_the_stage_description_quotes_no_test_count` and `::test_the_stage_description_names_what_actually_blocks_the_gate`.
+  - Criterion 2 — `::test_the_in_progress_row_agrees_with_the_task_blocks`: the row either says *none* or names exactly one task whose block actually holds `IN_PROGRESS`. That is how two invocations come to disagree about ownership, and the header is where a fresh one looks first.
+  - Criterion 3 — `::test_every_task_the_header_names_exists`, over both header rows, reading known IDs from `#### T-###` blocks **and** §8's gated-epic table so a reference like `T-093` is not reported missing.
+  - **Scoped to the header rows, not the file.** A whole-file scan would flag this very task block, which quotes the stale strings while describing them — the same self-reference trap that made an earlier detector read its own docstring. `::test_the_header_rows_this_file_checks_exist` is the guard on the guard: a renamed label or a misreading ID scan would make every other check vacuous.
+  - Negative controls — **four, each bit and each restored green**, and each reintroduces a drift the header actually had: a suite size back in the summary → 1 failed; the gate's blocker no longer named → 1 failed; the header claiming a task the blocks call `DONE` → 1 failed; the header naming a task that was never written → 1 failed. The ownership control matched nothing on its first run — it assumed the row said *none*, and it says `T-176` while this task is open — so it was re-aimed at what the row actually contains.
+  - `uv run pytest -q` → **2320 passed, 2 xfailed** (2314 before); `ruff check`, `ruff format --check`, `mypy app` clean. No production code changed.
+#### T-177 — The header's recommendation contradicts the ledger's own `READY` set
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** §19.6, process.md §3, §7
+- **Found by:** censusing §8's "Stage 3—7 gated epics" table. Those tasks are table rows, not `#### T-###` blocks, so they have been invisible to every status census this loop has run. The scan found **`T-094`** (`FakeCRMAdapter` plus the internal shadow-mode repository) carrying `READY`, with both dependencies `T-016` and `T-017` `DONE` and no gate on it. Row 14 opens "none this loop can start" and never mentions it.
+- **Why it matters:** `READY` is the ledger's own word for startable. A header that says *none* while the file says `READY` twice teaches a reader to trust neither, and this omission was not cosmetic — it kept an actionable-looking task out of view for the whole loop.
+- **The drift class, not just the instance:** `T-176` fixed stale counts and a superseded blocker in row 11. This is the neighbouring row disagreeing with *the status field it summarizes*, and it survives because two task representations exist and only one is ever scanned.
+- **Objective:** row 14 accounts for every `READY` task, and a divergence fails a test rather than waiting for someone to run a census by hand.
+- **Scope (in):** correcting row 14 to name `T-094` and why it is not startable; a test that the next-recommended row names every `READY` task across **both** representations, and may say *none* only when that set is empty.
+- **Scope (out):** changing `T-094`'s status — it is `READY` by the ledger's own definition and no gate blocks it — and building it. Its only consumer is `Rule.EXISTING_RELATIONSHIP`, which is `T-143`, `BLOCKED` on **G-05**; the suppression half is already served directly by `find_suppression`. An adapter with one implementation and no call site is scaffolding, which §4 of the invoking protocol refuses.
+- **Acceptance criteria:**
+  1. The next-recommended row names every task the ledger marks `READY`; test-proven.
+  2. The row may say *none* only when the `READY` set is empty; test-proven.
+  3. The `READY` census reads `#### T-###` blocks **and** §8's table rows; test-proven.
+- **Verification:** `uv run pytest -q tests/test_ledger_header.py`
+- **Files:** `tasks.md`, `backend/tests/test_ledger_header.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **Found by reading §8, which no census had ever read.** Task status lives in two shapes — `#### T-###` blocks and §8's gated-epic table — and every scan this loop ran matched only the first. The table holds 28 rows; exactly one, **`T-094`**, carried `READY`, with `T-016` and `T-017` both `DONE` and no gate against it. Row 14 said "none this loop can start".
+  - **`T-094` was examined before the row was rewritten, not after.** §5's prohibited starts do not cover it (a fake adapter is not a CRM write) and its own row calls it "safe before **G-05**", so `READY` is correct. It is still not worth starting: its consumer is `Rule.EXISTING_RELATIONSHIP` in `app/qualification/eligibility.py`, deferred to `T-143`, which is `BLOCKED` on **G-05**; and the suppression half of its scope is already served directly by `find_suppression`. Building it today yields a protocol, a fake, and a repository with no call site. **Its status was left alone** — the ledger is right and the header was wrong, and re-labelling the task would have hidden that.
+  - Criterion 1 — `tests/test_ledger_header.py::test_the_next_recommended_row_names_every_ready_task`.
+  - Criterion 2 — `::test_the_row_says_none_only_when_nothing_is_ready`. The two are separate because they fail in opposite directions: one catches an omission from a non-empty set, the other catches the word *none* surviving after something becomes `READY`.
+  - Criterion 3 — proven by controls, not by a structural claim. `::test_the_ready_census_reads_both_representations` asserts the table still defines tasks no block defines, so the two-source scan is not dead code; the controls below then flip a status in **each** shape and require the census to notice.
+  - Negative controls — **five, each bit and each restored green.** A `READY` task dropped from the row → 2 failed (unnamed *and* a dangling reference); the original "none this loop can start" restored → 1 failed; a §8 **table** row flipped to `READY` and left unnamed → 1 failed; a **task block** flipped to `READY` and left unnamed → 1 failed; the row naming a task that was never written → 1 failed. The first control matched **two** places on its first run — the phrase also appears in this task's own block, which describes the defect — so it was re-aimed at row 14 alone. That is the second time a self-referential task block has fooled a control here.
+  - `uv run pytest -q` → **2324 passed, 2 xfailed**; `ruff check`, `ruff format --check`, `mypy app` clean. **No production code changed** — this cycle touched `tasks.md` and one test file.
+
+#### T-102a — Opt-out intake: permanent, immediate, idempotent suppression
+- **Stage / Priority:** 5 / P1
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-017, T-036
+- **Spec:** §15.6, §15.8
+- **Parent:** `T-102` (§8, Stage 5), split on the layer boundary — the recording core here, the channel-facing surface in `T-102b`. Nothing is removed from the parent's intent by the split.
+- **Why this is startable while gate G-07 is locked:** §8's Stage 5 heading names **G-07**, and the `T-102` row carries an explicit written exemption — "Implementable against the fake channel before **G-07**". §5's prohibited starts for G-07 are "Email provider OAuth, SMTP client, or send in test mode"; recording an inbound opt-out is none of them. It sends nothing and can only ever *prevent* contact.
+- **Found by:** scanning §8's rows for tasks whose prerequisites are met — the follow-up to `T-177`, which found that section invisible to every census.
+- **Objective:** §15.8's "clear opt-out handling and immediate suppression" as code: an opt-out becomes a suppression that is immediate, permanent, and idempotent, and a candidate that was eligible a moment earlier stops being eligible with no other change.
+- **Scope (in):** `record_opt_out()` in `app/prospects/suppression.py`, recording `EMAIL` scope and, when the person is identified, `PERSON` scope; refusal of any liftable source; clamping `effective_at` so an opt-out can never be future-dated; idempotency against an existing unliftable suppression; tests that prove immediacy through `evaluate()` and refusal through `require_not_suppressed`.
+- **Scope (out):** the channel-facing surface — `List-Unsubscribe`, an HTTP unsubscribe endpoint, provider webhooks — all `T-102b`, behind **G-07**. Bounce, delivery, and reply event processing and sequence-stop are `T-103`. No route table change, so no typed-contract chain.
+- **Acceptance criteria:**
+  1. An opt-out recorded at a moment makes a previously-eligible candidate ineligible immediately, with nothing else changed; test-proven.
+  2. The same opt-out delivered twice records one suppression, not two; test-proven.
+  3. An opt-out is never future-dated, whatever the caller passes; test-proven.
+  4. An opt-out cannot be recorded under a source that could later be lifted; test-proven.
+- **Verification:** `uv run pytest -q tests/test_suppression.py tests/test_eligibility.py`
+- **Files:** `app/prospects/suppression.py`, `backend/tests/test_suppression.py`, `backend/tests/test_eligibility.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - Criterion 1 — `tests/test_eligibility.py::test_an_opt_out_makes_an_eligible_candidate_ineligible_at_the_same_instant`. It lives beside the `world` fixture because the claim is about a *candidate*, not a suppression row: evaluate → eligible, record the opt-out, evaluate again **at the same instant**, and `SUPPRESSION` is the only failure. "Immediately across active campaigns" needs no fan-out job, and that was verified rather than assumed — `find_suppression` is read live by four callers: `qualification/eligibility.py`, `drafts_and_approvals/validation.py`, that package's dashboard API, and `outreach_and_replies/preconditions.py`, which is the §11.4 recheck.
+  - Criterion 2 — `::test_the_same_opt_out_twice_records_one_suppression`, whose second delivery is spelled `Twice@EXAMPLE.com`: idempotency has to key on the normalized identity or a provider echoing a different casing defeats it. Suppressions cannot be deleted (§15.6), so a duplicate is permanent noise in the table an operator reads.
+  - Criterion 3 — `::test_an_opt_out_is_never_future_dated`, with `::test_an_opt_out_recorded_earlier_keeps_the_earlier_moment` pinning the clamp as one-directional. Suppressing earlier is the safe direction; suppressing later is a send window.
+  - Criterion 4 — `::test_an_opt_out_may_not_be_recorded_under_a_liftable_source`, parametrized over every source outside `UNLIFTABLE_SOURCES`, plus `::test_a_liftable_suppression_does_not_stand_in_for_an_opt_out` — the half of idempotency that must *not* deduplicate, since lifting the `MANUAL` row would otherwise silently un-suppress someone who had asked to be left alone.
+  - Negative controls — **six, each bit and each restored green**, one per safety property: a liftable source accepted → 4 failed; the future-date clamp removed → 1 failed; idempotency removed → 1 failed; the `PERSON` scope dropped → 1 failed; a liftable row allowed to satisfy the opt-out → 1 failed; the record made effective a year out → 6 failed. **They were then re-run after `ruff format` reflowed two of the files**, because a control that passed against pre-format source proves nothing about what ships; all six still bit, and every uniqueness assertion held.
+  - **A disproven hypothesis, recorded rather than deleted.** The scan that found this task first flagged `T-081`, `T-084`, `T-102`, and `T-103` as gate-free with satisfied dependencies. That was **wrong for three of them**: §8 groups rows under stage headings that carry the entry gate, so `T-081` and `T-084` sit under "Stage 3 (entry gate **G-10**)" and are correctly `PLANNED`. Only `T-102` had an explicit written exemption. `T-090` looked like a fourth — "Buildable with a fake channel before **G-04**" — but its depends column reads `G-10, T-036`, and the note clears G-04, not G-10. **Read the section heading and the depends column, not the note alone.**
+  - `uv run pytest -q` → **2337 passed, 2 xfailed**; `ruff check`, `ruff format --check`, `mypy app` clean. No migration (the `suppression` table is unchanged), no route change and therefore no typed-contract chain, no frontend file touched. No new imports in `prospects`, so the module boundary is untouched.
+
+#### T-102b — The channel-facing opt-out surface
+- **Stage / Priority:** 5 / P1
+- **Status:** `BLOCKED`
+- **Depends on:** T-102a, gate **G-07**
+- **Spec:** §15.8, §17.3
+- **Parent:** `T-102`. The half of the parent that touches a provider.
+- **Objective:** an opt-out that arrives from outside reaches `record_opt_out()`.
+- **Scope (in):** the `List-Unsubscribe` header and its one-click form, an unsubscribe endpoint and its token handling, and provider unsubscribe webhooks with signature verification — each of which requires a chosen provider and mailbox.
+- **Blocker / Q:** gate **G-07** is LOCKED, and `Q-004` has chosen no mailbox, provider, or sender identity. §5 forbids an email provider OAuth flow, an SMTP client, or a send in test mode until it opens.
+
+#### T-178 — Nothing may mint an opt-out around `record_opt_out`
+- **Stage / Priority:** 5 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-102a
+- **Spec:** §15.6, §15.8, §19.2
+- **Found by:** auditing `T-102a`, the previous cycle's own work, the way `T-157` came from auditing `T-067a`. `record_opt_out()` enforces four properties — permanence, an `effective_at` that can never be future-dated, idempotency, and the person as well as the mailbox — and **nothing stops the next author calling `record_suppression()` directly with `source=SuppressionSource.UNSUBSCRIBE` and getting none of them.** The code that would do it is the code coming next: `T-102b`'s webhook and `T-103`'s event processing.
+- **Why it matters:** a suppression cannot be deleted (§15.6), so a bypass does not announce itself — it leaves a row that looks right and is future-dated, duplicated, or liftable. "Zero sends to suppressed recipients" is a safety invariant (§3.5), and the guard belongs beside the function it protects rather than in a reviewer's memory.
+- **The rule, stated precisely:** no module under `app/` may pass a **literal** `SuppressionSource.UNSUBSCRIBE` or `.COMPLAINT` to `record_suppression()`. Minting an opt-out goes through `record_opt_out()`. **Carrying** an existing one is untouched: dedup passes `source=suppression.source`, a variable, because it copies a decision already made rather than making a new one.
+- **Objective:** the bypass fails a test, and the walk that detects it is proven to fire rather than merely to exist.
+- **Scope (in):** one structural invariant in `tests/test_invariants.py`, resolving import aliases and matching attribute calls, plus a guard asserting the walk still sees the legitimate call site so it cannot pass vacuously.
+- **Scope (out):** changing `record_suppression()` or `dedup`; any runtime enforcement. This is a structural test, and no production code changes.
+- **Acceptance criteria:**
+  1. A module minting a literal opt-out through `record_suppression()` fails the invariant, whether the function is called by name, through a module attribute, or under an import alias; control-proven.
+  2. The enum reference is matched by attribute name, so aliasing `SuppressionSource` does not evade it; control-proven.
+  3. The walk cannot pass vacuously: it asserts it still finds the legitimate carrying call in `dedup`; control-proven.
+- **Verification:** `uv run pytest -q tests/test_invariants.py`
+- **Files:** `backend/tests/test_invariants.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **The invariant holds today, so no `xfail` was needed.** The one call that passes an unliftable source — `prospects/dedup.py` carrying a suppression onto a surviving contact — passes `source=suppression.source`, a variable. It also, independently, already clamps with `min(suppression.effective_at, now)`, which is the same property `record_opt_out` enforces; two authors reaching for it separately is the argument that it is real.
+  - Criterion 1 — `tests/test_invariants.py::test_no_module_mints_an_opt_out_around_record_opt_out`, proven by **four** planted modules rather than by inspection: minted by name, through a module attribute (`suppression.record_suppression(...)`), under a function alias (`import record_suppression as rs`), and under an enum alias (`SuppressionSource as SS`). Each failed the invariant; each plant was removed in a `finally` and its absence asserted.
+  - Criterion 2 — the enum-alias plant is the proof: the walk matches `keyword.value.attr`, the attribute *name*, so the dotted path it was written under does not matter.
+  - Criterion 3 — `::test_the_opt_out_walk_sees_the_call_it_is_required_not_to_flag`, proven by breaking the detector: renaming `MINTING_FUNCTION` to something no module calls made the guard fail, which is what a silently-vacuous walk would otherwise look like.
+  - **A control that deliberately did *not* bite, and had to not.** A fifth plant passes `source=existing.source`; the invariant stayed green. Without it the rule could have been "no `record_suppression` call at all", which would forbid dedup's legitimate carry. A specificity control is the other half of a control that bites.
+  - **Criterion 1 is met more narrowly than its wording, and the docstring says so.** A source held in a variable (`src = SuppressionSource.UNSUBSCRIBE`) or splatted through `**kwargs` reads as an `ast.Name`, not an `Attribute`, and is out of the walk's reach. It catches the way the bypass would actually be written, and the failure message names `record_opt_out()` rather than only refusing. No follow-up task is filed: a walk that chased assignments would be a type checker, and `mypy` is already the thing that does that.
+  - `uv run pytest -q` → **2339 passed, 2 xfailed**; `ruff check`, `ruff format --check`, `mypy app` clean. **No production code changed** — one test file.
+
+#### T-179 — The status census is blind to the ledger's second block format
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-177
+- **Spec:** process.md §3, §7
+- **Found by:** `T-178`'s cycle, while checking whether `R-003` and `R-005`'s "revisit at `T-069`/`T-064`" had come due. Both tasks report `DONE` — but not to a census. `tasks.md` carries **two** block formats, and `T-060` through `T-071` (12 blocks) put `**Status:**` *inline* on the `Stage / Priority` line instead of on its own line.
+- **Why it matters:** every status census in this repository matches `^- **Status:**` at line start — including `ready_task_ids()` in `tests/test_ledger_header.py`, which `T-177` added **specifically so a `READY` task could not hide**. For those 12 tasks that guarantee is hollow. Today none of them is `READY` or `IN_PROGRESS`, so no header claim is currently wrong; reopen one and the guard would miss it in silence.
+- **Plainly attributed:** this is a gap in `T-177`'s own work, filed the way `T-157` was filed against `T-067a` rather than quietly patched.
+- **Objective:** the census reads a task's status in either format, and a block whose status it cannot read fails a test instead of being skipped.
+- **Scope (in):** widening the status match in `ready_task_ids()` and in the `IN_PROGRESS` agreement check, **bounded to the block's metadata region** so a block quoting another task's status in prose is not misread — the self-reference trap that made an earlier detector read its own docstring; a test that no block yields an unknown status; a control that flips an inline-format task to `READY` and requires the header test to notice.
+- **Scope (out):** normalizing the 12 blocks to one format. That is a large mechanical edit to tasks the audit has already reviewed, and the census should be robust to both formats rather than depend on a cleanup staying done.
+- **Acceptance criteria:**
+  1. No `#### T-###` block yields an unknown status — deliberately not phrased as a count, per `T-176`; test-proven.
+  2. An inline-format task flipped to `READY` and left unnamed in the header fails `::test_the_next_recommended_row_names_every_ready_task`; control-proven.
+  3. A status quoted in a block's prose is not read as that block's own; test-proven.
+- **Verification:** `uv run pytest -q tests/test_ledger_header.py`
+- **Files:** `backend/tests/test_ledger_header.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **The defect was proven real, not argued.** Same mutation — `T-069`, an inline-format block, flipped to `READY` and left unnamed in the header — run twice: with the new parser `::test_the_next_recommended_row_names_every_ready_task` **failed**; with the pre-`T-179` parser restored it **passed**. Passing was the bug, reproduced on demand and then closed.
+  - Criterion 1 — `::test_every_task_block_declares_a_status_the_census_can_read` (no block is unreadable) and `::test_both_block_formats_are_read` (the positive half, on synthetic blocks so it cannot rot as the ledger changes). Phrased as "none unreadable" rather than a block count, per `T-176`: a number here goes stale the next time a task is filed.
+  - Criterion 2 — the control above, plus a second that points the header's `IN_PROGRESS` row at an inline-format task and requires `::test_the_in_progress_row_agrees_with_the_task_blocks` to notice the disagreement. That check no longer substring-searches the block — `"**Status:** `IN_PROGRESS`" in block` would have matched the phrase anywhere in its prose — and reads through `status_of()` instead.
+  - Criterion 3 — `::test_a_status_quoted_in_prose_is_not_read_as_the_blocks_own`. **The first version of this test could not have failed.** It asserted that a block declaring `READY` reads as `READY` while its prose mentions `DONE` — but the block's own metadata is its first two lines, so line-order scanning returns the right answer no matter how loose the pattern is. It was rewritten around the case that actually needs the anchor: a block whose label is mistyped must read as **unknown**, not inherit a status from its prose, which is what makes criterion 1 report it instead of skipping it.
+  - Negative controls — **five, each bit and each restored green**: an inline task flipped to `READY` → 1 failed; the header claiming an inline task → 1 failed; a status label corrupted to `- **State:**` → 1 failed; **inline support removed, reproducing the pre-`T-179` parser exactly** → 2 failed (12 blocks unreadable again); the `- ` anchor removed so prose matches → 1 failed. The ledger mutations locate the line **by index inside the named block and assert its exact content first**, because the inline line is long and would reflow under any pattern-based edit.
+  - **Scope held.** The 12 inline blocks were left exactly as they are (scope-out): the census is now robust to both formats rather than depending on a cleanup staying done, and those tasks have already been through audit.
+  - `uv run pytest -q` → **2342 passed, 2 xfailed**; `ruff check`, `ruff format --check`, `mypy app` clean. **No production code changed** — one test file.
+
+#### T-180 — Two reconciliation records name revisit points that have passed
+- **Stage / Priority:** 2 / P3
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** process.md §8, §7.2, §8.2, §14.4
+- **Found by:** `T-178`'s cycle. `docs/reconciliation.md` records `R-003` as "`T-031` (done); revisit at `T-069`" and `R-005` as "`T-056` (done); revisit at `T-064`". **`T-069` and `T-064` are both `DONE`**, so both revisits are due and neither happened.
+- **Why it matters:** a divergence parked with "revisit when X lands" is only safe while someone notices X landing. Both are recorded as benign interpretations, so the likely outcome is closing them with a note — but that is a conclusion to reach by reading the code, not to assume from the label.
+- **Objective:** each record is either `CLOSED` with what the revisit found, or restated with a new revisit trigger that has not already passed.
+- **Scope (in):** re-reading §7.2 against §8.2 for `R-003` and §14.4 against §8.2 for `R-005`, against the code as it now stands, and updating `docs/reconciliation.md`.
+- **Scope (out):** changing the state machines. If a revisit finds a real divergence it is filed as its own task, not fixed here.
+- **Acceptance criteria:**
+  1. `R-003` and `R-005` each carry a dated revisit outcome.
+  2. Any revisit trigger that remains names a task that is not yet `DONE`.
+- **Verification:** reading; `uv run pytest -q`
+- **Files:** `docs/reconciliation.md`, `backend/tests/test_reconciliation.py` (added — criterion 2 states a property, and a property worth stating is worth a test)
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **Both revisits were done against the code, and both records name the exact condition for reopening — which is what made them answerable.**
+  - `R-003` asked whether the dashboard would need review-pending jobs to be **resumable**, which a terminal state cannot express. `T-069` shipped and asks for no such thing: the panel carries `DeadJob.requires_human_review` (rendered "needs a human" in `OperationsPanel.tsx`) and the **only mutating operations route is the flag toggle** — there is no resume, requeue, or retry endpoint in `ROUTE_PERMISSIONS`. `CLOSED`.
+  - `R-005` asked whether the review card would need to show a draft **killed before validation**. It cannot arise: `ALLOWED_TRANSITIONS[MessageRevisionState.DRAFT]` is `{validation_failed, review_pending, superseded}`, so `draft → invalidated` does not exist and leaving a draft alone is **forced, not chosen**. It is also safe — a draft citing a withdrawn claim fails closed on the way to review via `_check_claim_currency`. `CLOSED`.
+  - Criterion 1 — both records carry a dated outcome naming the task, the evidence, and the test that holds each behaviour (`test_human_review_is_distinct_from_dead`, `test_a_draft_revision_is_left_alone`).
+  - Criterion 2 — `tests/test_reconciliation.py::test_no_open_record_waits_on_a_revisit_that_has_already_happened`. It reads task statuses through `test_ledger_header.status_of` rather than a second copy, because `T-179` had just taught that parser both of the ledger's block formats and a duplicate would drift from it — and the `T-069` trigger is itself an inline-format block, so this check depends on that work directly.
+  - Negative controls — **four, each behaved as designed and each restored green**: `R-003` flipped back to `OPEN` while still naming the closed `T-069` → 1 failed, reporting `{'R-003': ['T-069']}` — which is precisely the state the repository was in before this task; the trigger pattern broken → 1 failed; the row pattern broken → 1 failed. **The fourth had to *not* bite**: an `OPEN` record given a revisit trigger naming `T-009`, which is `BLOCKED`, stayed green. Without it the rule would have been "no open record may name a trigger at all", which forbids the legitimate case the file exists to support.
+  - **A disproven hypothesis, recorded rather than deleted.** Mid-cycle I read the claim-currency check as untested and was about to file it. It is tested — in `tests/test_revision_validation.py`; the grep had named `tests/test_validation.py`, which does not exist, and returned nothing. A silent-zero grep looks exactly like a real absence.
+  - **`is_open()` reads the state cell, not the line.** `R-001`'s divergence text contains the word "open", so a whole-line search would have called a closed record open and quietly widened the scan.
+  - `uv run pytest -q` → **2344 passed, 2 xfailed**; `ruff check`, `ruff format --check`, `mypy app` clean. No production code changed; no state machine touched (scope-out held).
+
+#### T-181 — The last task block swallows every section after it
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** T-179
+- **Spec:** process.md §3
+- **Found by:** sweeping the checkpoint's §14 list ("required before G-10 can close") and checking each item against the code. That list is clean — `T-157`, `T-068b` and **M2's residual `T-137` delta** are all genuinely closed (`revoke()` raises `RevocationNeedsReason` on a blank reason and `ApprovalAlreadyClosed`, a domain error rather than `IllegalTransition`, on a closed approval). The defect turned up in the tooling used to do the sweep: `task_blocks()` bounds a block with `(?=^#### |\Z)`, so the **last** `####` block in the file runs to end-of-file.
+- **Measured:** `T-152` is that block. It is **337 lines**; the next largest is 36. It contains all of §8's gated-epic table and all of §9's progress log.
+- **Why it matters, and what it does *not* do today:** `status_of()` returns the first status it finds, and `T-152`'s own line comes first, so **no census answer is wrong right now**. This is a latent trap, not a live bug, and it is filed as one. The moment any check reads a block's *content* rather than its status — a scan for a field, a link, a dependency — it will silently attribute two whole sections to whichever task happens to be last.
+- **Plainly attributed:** `task_blocks()` is `T-179`'s own work, filed the way `T-157` was filed against `T-067a`.
+- **Objective:** a task block ends where the task ends.
+- **Scope (in):** bounding the block at the next `#### ` heading, the next `## ` section heading, or end of file, whichever comes first; a test that no block contains a section heading; a test that every `#### T-` heading still yields exactly one block, so the fix cannot drop the final one.
+- **Scope (out):** moving §8 or §9, or adding a trailing sentinel heading to the ledger. The parser should be correct about where a block ends rather than depend on the document being shaped to suit it.
+- **Acceptance criteria:**
+  1. No task block contains a `## ` section heading; test-proven.
+  2. Every `#### T-` heading yields exactly one block — the guard that the boundary fix did not drop the last block; test-proven.
+- **Verification:** `uv run pytest -q tests/test_ledger_header.py tests/test_reconciliation.py`
+- **Files:** `backend/tests/test_ledger_header.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **Measured before and after.** `T-152`'s block was **337 lines** and contained `## 8.` and §9's progress-log rows; it is now **28**, and the largest block in the ledger is `T-007` at 36.
+  - Criterion 1 — `::test_no_task_block_swallows_the_section_after_it`.
+  - Criterion 2 — `::test_every_task_heading_yields_exactly_one_block`, which compares the block scan against the heading scan in order, so a dropped block and a phantom one both fail.
+  - **A control that did not bite, treated as a finding.** Removing `\Z` from the lookahead changed nothing — 15 passed. The branch is **genuinely unreachable**: every task block today is followed by another `####` or by a `## ` section, so `\Z` never terminates one. It was **kept, not deleted**, and the reason is recorded in the comment above the pattern where the next reader will look: the shape it covers — a task block that ends the file — is one appended task away, and its failure mode is the silent kind. The control was re-aimed at the heading half of the pattern, which *can* bite.
+  - Negative controls — **two, each bit and each restored green**: the `^## ` section bound removed, restoring exactly the parser `T-179` shipped → 1 failed; the heading pattern narrowed so blocks vanish → 2 failed.
+  - **This was latent, and the row says so.** `status_of()` returns the first status it finds and `T-152`'s own line came first, so no census answer was ever wrong. It is closed because the first check that reads a block's *content* would have inherited two whole sections without any signal.
+  - **The sweep that found it also cleared three others**, recorded so they are not re-opened: every `T-###`, `Q-###`, `ADR-###` and `R-###` referenced in `tasks.md` resolves (the `Q`s against spec §20.1 and the ADRs 001—017 against the specification, which is where they live — a first pass that checked only `tasks.md` and `docs/adr/` reported 22 false dangling references); both `xfail(strict=True)` cases are the one parametrized `T-172` test, blocked on ADR-027; and the checkpoint's §14 list is accurate — **M2's residual `T-137` delta is genuinely closed**, verified in code, not by its status: `revoke()` raises `RevocationNeedsReason` on a blank reason and `ApprovalAlreadyClosed`, a domain error rather than `IllegalTransition`, on a closed approval.
+  - `uv run pytest -q` → **2346 passed, 2 xfailed**; `ruff check`, `ruff format --check`, `mypy app` clean. **No production code changed** — one test file.
+
+#### T-182 — AGENTS.md's reserved-domain rule has no test
+- **Stage / Priority:** 2 / P2
+- **Status:** `DONE` (2026-08-01)
+- **Depends on:** none
+- **Spec:** `AGENTS.md` rule 1, §15.5
+- **Found by:** sweeping the repository for the one rule with real stakes on a **public** remote (`codysj/Sales-Agent`). `AGENTS.md` rule 1 requires synthetic data only and "a visible `SYNTHETIC-` prefix and IANA reserved example domains". `tests/test_fixtures.py` enforces the **prefix** half thoroughly (names, prose, and no digits, so no roadmap date or price can appear). Nothing enforces the **domain** half.
+- **Measured:** across the 301 files actually in the repository, three email strings use registrable domains, all in `tests/test_prospects.py` — two single-letter normalization inputs and one malformed-input rejection case, each at a real one-letter `.com` name. **None is a prospect record**, and the harm today is nil; they are simply domains somebody owns, sitting in a public repository. The neighbouring test already uses `A@X.example.com`, and its **docstring still quoted the old values** — so this was fixed once and the prose left behind, which is exactly how a rule with no test decays. **The offending strings are described here, not quoted:** the check has no exemption list, because a file allowed to hold explanatory addresses is where a real one would survive.
+- **Why it matters:** the rule exists so nobody has to judge whether a given address is "real enough". A guard catches the case that would actually matter — a genuine prospect address pasted into a fixture — when it lands, rather than at the next audit.
+- **Objective:** every email address in the repository sits under a reserved domain, and one that does not fails a test.
+- **Scope (in):** correcting the three strings and the stale docstring; a walk over the files the repository actually carries asserting every email-like string uses `*.invalid`, `*.test`, `*.example`, `*.localhost`, or `example.com/.org/.net`.
+- **Scope (out):** the `SYNTHETIC-` prefix rule (`tests/test_fixtures.py` already holds it); prose domains that are not email addresses; and `two@@at.com`, a malformed-input rejection case that is not an address at all and that the address pattern does not match.
+- **Acceptance criteria:**
+  1. No email address in a repository file uses a non-reserved domain; test-proven.
+  2. The walk cannot pass vacuously — it proves it still finds the reserved addresses that legitimately exist; test-proven.
+  3. A planted real-domain address fails the check; control-proven.
+- **Verification:** `uv run pytest -q tests/test_synthetic_data.py tests/test_prospects.py`
+- **Files:** `backend/tests/test_synthetic_data.py`, `backend/tests/test_prospects.py`
+- **Blocker / Q:** none
+- **Completion evidence (2026-08-01):**
+  - **The guard's first run failed on its own documentation.** It flagged this task block and the new test's docstring, both of which quoted the offending addresses while explaining them — the same self-reference trap that made an earlier detector read its own docstring. **Resolved by describing the strings instead of quoting them, not by an exemption list:** a file allowed to hold "explanatory" addresses is exactly where a real one would survive. The check therefore has no exemptions at all, which is what makes it un-gameable.
+  - Criterion 1 — `tests/test_synthetic_data.py::test_every_email_address_uses_a_reserved_domain`, over every file the repository actually carries (caches, `node_modules`, and `.venv` pruned).
+  - Criterion 2 — `::test_the_address_scan_is_not_vacuous`, which holds the two ways the check could quietly stop meaning anything: the walk finding almost no files, or the pattern matching no addresses. The repository is full of legitimate reserved addresses, so both are observable rather than hypothetical.
+  - Criterion 3 — a planted file carrying an address at a registrable domain → 1 failed, then removed with its absence asserted.
+  - Negative controls — **four, each bit and each restored green**: the planted real address; the address pattern broken → 1 failed; the walk over-pruned so the file count collapses → 1 failed; **the reserved set emptied** → 1 failed, which proves the set is load-bearing in the other direction rather than a list that happens to match everything.
+  - **Scope held, and the residue named.** `two@@at.com` is untouched: it is a malformed-input rejection case, not an address, and the pattern does not match it. Bare domains in prose are out of scope — `linkedin.com` is named by ADR-005, which *rejects* automating it, and a hostname-wide rule would flag exactly the references the architecture depends on.
+  - **Cost noticed and paid down.** The walk ran three times per session at ~17s; `functools.cache` on the two readers brought the file to **~3s**.
+  - `uv run pytest -q` → **2348 passed, 2 xfailed**; `ruff check`, `ruff format --check`, `mypy app` clean. No production code changed.
+
+#### T-071b — The rehearsal, and the gate
+- **Stage / Priority:** 2 / P1
+- **Status:** `BLOCKED` — needs a non-engineer to actually do it, and `T-070b` (`Q-026`)
+- **Depends on:** T-071a, T-070b
+- **Spec:** §19.6 Stage 2 exit gate
+- **Objective:** A non-engineer completes candidate and message review unaided, and the gate is then evaluated.
+- **Scope (in):** Running the `T-071a` script with a real non-engineer; recording observed timings, where they hesitated, and their confirmation; filing what the rehearsal exposes; evaluating **G-10** on that evidence.
+- **Scope (out):** Rewriting the script beyond what the rehearsal shows is wrong.
+- **Acceptance criteria:**
+  1. `docs/stage2-exit-evidence.md` carries observed timings and the reviewer's confirmation.
+  2. Every step worked, or what did not is filed.
+  3. **G-10** is evaluated on that evidence and marked accordingly.
+- **Verification:** the rehearsal
+- **Files:** `docs/stage2-exit-evidence.md`, `tasks.md` §5
+- **Blocker / Q:** a non-engineer reviewer, which this loop cannot be; and `T-070b`, `BLOCKED` on **`Q-026`**, because the gate covers Stage 2 as a whole.
 #### T-151 — The dashboard sign-in screen
 - **Stage / Priority:** 2 / P0
 - **Status:** `DONE` (2026-07-31 — `T-151a` and `T-151b` are both `DONE`); split, see the note below
@@ -2709,7 +3743,7 @@ completes reviews without understanding the agent stack.
 
 #### T-152 — Seven high-severity advisories in the frontend dependency tree
 - **Stage / Priority:** 2 / P2
-- **Status:** `READY` (2026-07-31)
+- **Status:** `DONE` (2026-08-01)
 - **Depends on:** T-060a
 - **Spec:** §15.6, §19.4
 - **Found by:** `T-065b`, while adding two dev dependencies. `npm audit` reports `{"high": 7, "critical": 0}` against `@redocly/openapi-core`, `brace-expansion`, `minimatch`, `next`, `openapi-typescript`, `postcss`, and `sharp`. **None come from the two packages that cycle added** (`jsdom`, `@testing-library/react`); all seven predate it and arrived with `T-060a`'s scaffold.
@@ -2724,6 +3758,14 @@ completes reviews without understanding the agent stack.
 - **Files:** `frontend/package.json`, `frontend/package-lock.json`
 - **Blocker / Q:** none
 - **Checkpoint note (2026-07-31):** Audit re-measured `npm audit`: `{high: 3, critical: 0}` — down from the 7 recorded above; the dependency tree drifted with later installs. The local-only exposure reasoning stands. Re-measure before acting rather than trusting either count.
+- **Completion evidence (2026-08-01):**
+  - **Re-measured first, as the checkpoint note instructs: `{high: 3, critical: 0}`**, not the seven in the "Found by" line. All three were one root cause — `next@16.2.12` pins `postcss` to exactly `8.4.31` (three advisories, worst: path traversal in source-map auto-loading, `<=8.5.17`) and declares `sharp` as an optional `^0.34.5` (libvips CVE-2026-33327/33328/35590/35591, `<0.35.0`). `next` itself is flagged only because it carries them.
+  - **`npm audit fix` was the wrong tool here and the task's Scope (out) already suspected it.** Its proposed fix is `next@9.3.3` — a *five-major downgrade*, not an upgrade, because npm looks for any version outside the advisory range `9.3.4-canary.0 - 16.3.0-preview.7` and finds one below it. Taking it would have deleted the App Router. `16.2.12` is `latest`; the fix exists only on `preview`/`canary`, and shipping a Next pre-release to satisfy an advisory nothing can currently reach would be a worse trade than the advisory.
+  - **Resolved with `overrides` rather than accepted.** `postcss: ^8.5.25` and `sharp: ^0.35.3` raise the two transitive packages within their own majors while leaving `next` where `ADR-021` pinned it, and the reason is written into a `//overrides` key beside them so the next reader does not have to reconstruct it. `sharp` is an *optional* dependency of `next` used for image optimization; the dashboard renders no images, and the build proves the override does not break the toolchain.
+  - Criterion 1 — `npm audit --audit-level=high` → **`found 0 vulnerabilities`**, exit 0. Clean, so the "listed with a reason for being accepted" branch does not apply and no advisory is carried forward. Resolved tree: `next@16.2.12 → postcss@8.5.25, sharp@0.35.3`, with `vite`'s `postcss` deduped onto the same node.
+  - Criterion 2 — `npm run lint`, `npm run typecheck` clean; `npm run test` → **185 passed (11 files)**; `npm run build` → exit 0, the same seven routes. Backend untouched this cycle and re-run anyway: `uv run pytest -q` → **2198 passed**.
+  - Negative controls — **three, each bit and each restored to `high=0` via `npm ci`**: removing both overrides → `high=3`; keeping only `postcss` → `high=2` (`sharp` and the `next` node it taints return); keeping only `sharp` → `high=1, moderate=1` (postcss's own advisories return). Neither entry is decoration — each one is the sole reason an advisory is absent. `package.json` and `package-lock.json` were restored as bytes and reinstalled from the lockfile after every run.
+  - Scope held: no `npm audit fix --force`, no major bump, no change to any pinned toolchain decision in `ADR-021`. `T-165` files the removal of the overrides once a stable `next` ships past the advisory range, so they cannot outlive their reason unnoticed.
 
 ---
 
@@ -2743,7 +3785,7 @@ behind a locked gate must be `PLANNED` or `BLOCKED`, never `READY`. Only the use
 | **G-07** | Email-provider execution, even in test mode | `Q-004` answered (mailbox, provider, sender identity, reply address, domain); **G-10** open; SPF/DKIM/DMARC verified; suppression and opt-out paths `DONE`; `Q-015` reply owner named; §15.8 checklist complete. | **LOCKED** |
 | **G-08** | Any live outreach to a real recipient | Every Stage 5 exit condition in spec §19.6; `Q-002`, `Q-004`, `Q-005`, `Q-013`, `Q-014`, `Q-015`, `Q-017`, `Q-018`, `Q-020` answered; approved versioned claim set exists; U.S.-only; ~5 individually approved sends/day; legal/commercial owner authorization recorded; all §3.5 safety invariants demonstrated. | **LOCKED** |
 | **G-09** | Automatic follow-ups and scoped automation (`T-120`, `T-121`) | Multiple completed live review cycles showing reliable behavior and clear value; `Q-009` decided; §8.4 explicitly amended by an approved decision record. | **LOCKED** |
-| **G-10** | Stage 3 evaluation/staging work and (with other conditions) Stages 4–5 | `T-071` passes: a non-engineer completes reviews unaided; evidence in `docs/stage2-exit-evidence.md`. | **LOCKED** **Checkpoint 2026-07-31 (H1):** do not evaluate this gate while `T-157` is open — null version pins leave two §8.4 invalidation triggers unreachable on the production path. |
+| **G-10** | Stage 3 evaluation/staging work and (with other conditions) Stages 4–5 | `T-071` passes: a non-engineer completes reviews unaided; evidence in `docs/stage2-exit-evidence.md`. | **LOCKED** **Checkpoint 2026-07-31 (H1):** the bar on evaluating this gate is **lifted** — `T-157` closed 2026-07-31 and the two §8.4 triggers now fire on approvals the production path creates. The gate itself stays **LOCKED** until `T-071`. |
 
 **Prohibited starts** — do not begin these under any status, in any task, until the named gate opens:
 
@@ -2860,7 +3902,7 @@ task away from opening.
 |---|---|---|---|---|---|
 | `T-100` | `BLOCKED` | Email adapter behind the existing external-effect boundary, provider test mode only | G-07, T-035 | §15.8, §5.1 | `Q-004`; adapter never decides whether a send is authorized |
 | `T-101` | `BLOCKED` | SPF/DKIM/DMARC verification evidence and sender-identity approval record | G-07 | §15.8 | `Q-004`; evidence document, not code |
-| `T-102` | `PLANNED` | Opt-out/unsubscribe intake with immediate suppression across active campaigns | T-017, T-036 | §15.6, §15.8 | Implementable against the fake channel before **G-07** |
+| `T-102` | `SPLIT` | Opt-out/unsubscribe intake with immediate suppression across active campaigns | T-017, T-036 | §15.6, §15.8 | Implementable against the fake channel before **G-07** |
 | `T-103` | `PLANNED` | Delivery, bounce, reply, and unsubscribe event processing with sequence-stop on any reply | T-036, T-022 | §8.3 steps 13–16, §17.3 | Reply *classification* may propose only; no autonomous substantive reply handling |
 | `T-104` | `BLOCKED` | Reply-ownership routing and handoff notification | T-103 | §8.3 step 17, §12.1 | `Q-015` |
 | `T-105` | `BLOCKED` | Compliance footer, physical business address, and truthful-header configuration | G-07 | §15.8 | `Q-017` plus legal authority; never inferred |
@@ -2992,6 +4034,49 @@ verbatim in [`docs/ledger/progress-log-verbatim-2026-07-29.md`](docs/ledger/prog
 | 2026-07-31 | `T-155` | `DONE` | Request-more-research wired end to end; all five §12.3 item 6 actions now live on the card |
 | 2026-07-31 | `T-068a` | `DONE` | Invalidation reasons now name the triggering record; revocation endpoint; `T-157` filed for the missing version pins |
 | 2026-07-31 | checkpoint | `PASS_WITH_ACTIONS` | Independent audit: all checks re-run green (2050+127 tests, 27-migration round trip); H1=`T-157`; `T-158` filed; see [report](docs/checkpoints/2026-07-31_stage2_checkpoint.md) |
+| 2026-07-31 | `T-157` | `DONE` | Approvals now pin the product status and claim set (ADR-023 refuses a campaign with neither), so both §8.4 triggers fire |
+| 2026-07-31 | `T-158` | `DONE` | Closed on observation: the user committed the tree themselves; baseline is now commit `3f07e60` |
+| 2026-07-31 | `T-068b` | `DONE` | `/attention` page lists stale approvals with the record that made them stale and revokes one; `T-159` filed for dashboard navigation |
+| 2026-07-31 | `T-135` | `DONE` | `/readyz` proven `200`/`ready`/`ok` against the live Compose database; skips cleanly offline, so `T-004` criterion 2 is closed |
+| 2026-07-31 | `T-137` | `DONE` | `revoke()` now refuses a blank reason and an already-closed approval at the entry point, not only in the HTTP schema |
+| 2026-07-31 | `T-159` | `DONE` | Entry page rewritten and linked; a route walk fails on any unlinked page. `T-160` filed: the review queue still has no screen |
+| 2026-07-31 | `T-160` | `DONE` | `/review` lists candidates and revisions awaiting review, each row opening its card; backlog age shown; entry page links it |
+| 2026-07-31 | `T-070` | `SPLIT` | Into `T-070a` (cookies + CSRF), `T-070b` (reauthentication, `BLOCKED` on `Q-026` — no credential exists to re-present), `T-070c` (actor attribution) |
+| 2026-07-31 | `T-070a` | `DONE` | Session cookie `HttpOnly`/`SameSite`/`Secure`; every mutating route refuses a cookie without a matching CSRF token; bearer path unchanged |
+| 2026-07-31 | `T-070c` | `DONE` | Fail-closed AST detector: no mutating handler may root an actor anywhere but `principal`; audit actor columns proven unrewritable. No production change needed |
+| 2026-07-31 | `T-069` | `SPLIT` | Into `T-069a` (read view), `T-069b` (§17.6 controls), `T-069c` (panel); the file hint was corrected — the import graph refuses `audit_and_operations` |
+| 2026-07-31 | `T-069a` | `DONE` | `GET /api/operations/overview` under a new tier-5 `VIEW_OPERATIONS`; every counter proven by moving it; `T-161` and `T-162` filed |
+| 2026-07-31 | `T-069b` | `DONE` | §17.6 switches over HTTP under `PAUSE_SYSTEM`; audited both directions; proven that releasing every switch starts nothing |
+| 2026-07-31 | `T-162` | `DONE` | Every route's declared permission is now proven to be the one it enforces; the `T-069a` control that exposed the gap is now caught |
+| 2026-07-31 | `T-069c` | `DONE` | `/operations` panel: shadow mode stated first, dead jobs with reasons, switches needing a typed reason. `T-069` reconciled to `DONE` |
+| 2026-08-01 | `T-007` | `DONE` | CI runs the §2 list plus both alembic checks against `postgres:16`, read-only and secretless; migrations precede pytest so an unreachable database cannot pass by skipping. Frontend: `T-163` |
+| 2026-08-01 | `T-163` | `DONE` | Dashboard job added: lint, typecheck, 182 tests, build, Node pinned. The contract step was written, proven redundant against two existing drift tests, and deleted |
+| 2026-08-01 | `T-161` | `DONE` | A §11.4 suppression refusal now records the scope that matched (a category, never an address) and the overview counts the attempts instead of reporting `null` |
+| 2026-08-01 | `T-152` | `DONE` | `npm audit` clean: `postcss` and `sharp` raised by override, since `npm audit fix` proposed `next@9.3.3` — a five-major downgrade. `T-165` expires the overrides |
+| 2026-08-01 | `T-136a` | `DONE` | `T-136` promoted out of stale `PLANNED` and split three ways; the seeder and the shared factory now name approvers that resolve to real `app_user` rows, which `T-136b`'s foreign key needs |
+| 2026-08-01 | `T-136b` | `DONE` | Four approver columns are foreign keys to `app_user.email` with RESTRICT (ADR-024); the migration refuses unresolvable approvers rather than nulling attribution |
+| 2026-08-01 | `T-136c` | `DONE` | `approval.approver_id` is a foreign key too; `T-136` reconciled to `DONE`. No writer changed — the review API already recorded the email ADR-024 keys on |
+| 2026-08-01 | `T-166` | `DONE` | ADR-025: actor columns stay strings holding an `Actor`, not a user — a nullable key would constrain only the human branch. Nine columns annotated; `T-167` files the UUID/email split |
+| 2026-08-01 | `T-167` | `DONE` | ADR-026: the two vocabularies are deliberate — the actor id stays opaque because it reaches logs (§15.5), the approver stays an email because a reviewer reads it. Both sides pinned |
+| 2026-08-01 | `T-144a` | `DONE` | `T-144` found actionable in `PLANNED` and split; a contact now names the import batch it came from, first source wins, and no eligibility answer changed yet |
+| 2026-08-01 | `T-144b` | `DONE` | §10.1's approved-source-basis rule now runs and fails closed three ways; `csv` is the only approved source. `T-144` reconciled to `DONE` |
+| 2026-08-01 | `T-164a` | `DONE` | Action pins updated against each `action.yml`, not release notes. `setup-uv` publishes no major tags since v8, so `@v9` would not exist — now pinned `@v9.0.0` and tested |
+| 2026-08-01 | `T-168` | `DONE` | `T-071` split; writing the walkthrough found no way for a non-engineer to reach a review queue at all. `python -m app.cli import_prospects` closes it |
+| 2026-08-01 | `T-170` | `DONE` | Executing the walkthrough found no user holds any role — a valid session that sees `403` everywhere. `grant_local_reviewer` closes it; `T-169` filed for the empty queue |
+| 2026-08-01 | `T-169` | `DONE` | An import now enqueues membership work through `app/intake.py`, so candidates exist and advance. A dead guard was found and deleted; `T-171`/`T-172`/`T-173` filed |
+| 2026-08-01 | `T-171` | `DONE` | `start_campaign <slug>` offers the operator act §17.6 requires; a failing test proved the ordering: start **before** import, since a membership job is consumed once |
+| 2026-08-01 | `T-172` | `BLOCKED` | Two invariants refuse every shape of it: nothing under `app/` may register a source adapter, and nothing may import `app.worker`. Needs an ADR |
+| 2026-08-01 | `T-173` | `DONE` | The shadow slice now calls the production membership enqueue; every count in `docs/stage1-exit-evidence.md` re-observed and unchanged |
+| 2026-08-01 | `T-174` | `DONE` | `T-172`'s options are now ADR-027 (`PROPOSED`, recommending (b)) instead of a ledger note, with a test that the loop cannot promote its own proposal |
+| 2026-08-01 | `T-175` | `DONE` | ADR-027 claimed option (b) amends no invariant; it amends two, which both name the CLI then forbid it. Corrected, with an `xfail(strict=True)` naming `T-172` |
+| 2026-08-01 | `T-176` | `DONE` | The header quoted 161/182/182 frontend tests against an actual 185, and omitted `T-172` from what blocks the gate. Counts removed, not corrected; both drifts now fail a test |
+| 2026-08-01 | `T-177` | `DONE` | Row 14 claimed nothing was startable while `T-165` and `T-094` carried `READY`; `T-094` had been invisible because §8's epics are table rows, not task blocks |
+| 2026-08-01 | `T-102a` | `DONE` | Opt-out intake: permanent, immediate, idempotent suppression, split from `T-102` on its explicit pre-**G-07** exemption; `T-102b` holds the channel-facing half |
+| 2026-08-01 | `T-178` | `DONE` | Structural invariant: no module may mint an opt-out through `record_suppression`; four evasion plants caught, a carried source correctly left alone |
+| 2026-08-01 | `T-179` | `DONE` | The status census read only one of the ledger's two block formats, so 12 tasks could go `READY` unseen; proven by A/B against the old parser |
+| 2026-08-01 | `T-180` | `DONE` | `R-003` and `R-005` revisited against the code and `CLOSED`; an `OPEN` record waiting on a trigger that has already landed now fails a test |
+| 2026-08-01 | `T-181` | `DONE` | The last `####` block ran to end-of-file, swallowing §8 and §9 (337 lines vs 36); bounded at the section heading, latent not live |
+| 2026-08-01 | `T-182` | `DONE` | `AGENTS.md`'s reserved-domain half had no test; three registrable-domain strings corrected and a no-exemption walk added over every repository file |
 
 > Every run updates both this index and the task entry. The task entry carries the evidence; this
 > carries the order things happened in.

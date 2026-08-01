@@ -52,7 +52,7 @@ from app.jobs_and_outbox.registry import registry as default_registry
 from app.products_and_claims.models import Product
 from app.prospects.models import Account, Contact
 from app.research_and_evidence import jobs as research_jobs
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 
@@ -106,7 +106,7 @@ class World:
             session,
             campaign_id=self.campaign.id,
             policy=CampaignPolicy(),
-            approved_by="approver-1",
+            approved_by=APPROVER,
             approved_at=NOW,
         )
 

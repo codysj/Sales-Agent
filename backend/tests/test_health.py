@@ -1,7 +1,9 @@
-"""Application factory, correlation IDs, and health endpoints (T-004).
+"""Application factory, correlation IDs, and health endpoints (T-004, T-135).
 
-The database-backed ``/readyz`` success path is **not** covered here — it needs a running
-PostgreSQL and is carried by T-135. Everything below runs fully offline.
+Everything here runs fully offline **except** the one test `T-135` added: readiness reporting
+`ready` needs a database that actually answers, and no fake proves it. It takes the throwaway
+database `conftest.py` builds and skips with the rest of the integration suite when PostgreSQL is
+unreachable, so the offline run is unchanged rather than red.
 """
 
 import json
@@ -38,6 +40,49 @@ def unreachable_db_client() -> Iterator[TestClient]:
     with TestClient(app) as client:
         yield client
     dispose_engines()
+
+
+@pytest.fixture
+def live_db_client(database_url: str) -> Iterator[TestClient]:
+    """An app pointed at the session's real PostgreSQL (T-135).
+
+    `database_url` is `conftest.py`'s throwaway database, and taking it here buys the skip as
+    well as the connection: when the server is unreachable that fixture skips, so this test does
+    too, rather than failing an offline run.
+
+    Deliberately the **unmigrated** database — `/readyz` round-trips `SELECT 1` and must not
+    depend on any schema. Readiness that needed a table would report `not_ready` on a fresh
+    deployment between `upgrade head` and the first request, which is the opposite of what an
+    operator reads it for.
+    """
+    app = create_app(configure_logs=False)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        app_env=AppEnv.TEST,
+        database_url=database_url,
+    )
+    with TestClient(app) as client:
+        yield client
+    dispose_engines()
+
+
+def test_readyz_is_200_against_a_live_database(live_db_client: TestClient) -> None:
+    """`T-004` criterion 2's other half: the 503 path was provable offline, this was not."""
+    response = live_db_client.get("/readyz")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["database"] == "ok"
+    # The failure path returns a `detail`; the success path has nothing to explain, and an
+    # operator reading a field that is only ever populated on failure should see it absent.
+    assert body["detail"] is None
+
+
+def test_readyz_still_reports_shadow_mode_when_ready(live_db_client: TestClient) -> None:
+    """Asserted on the ready path too, not only the failing one: the safety posture is what
+    §17.5 wants visible, and an operator checks it when things are working."""
+    assert live_db_client.get("/readyz").json()["shadow_mode"] is True
 
 
 def test_healthz_is_200_without_a_database(unreachable_db_client: TestClient) -> None:

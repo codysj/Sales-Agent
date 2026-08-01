@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit_and_operations.service import Actor, record_audit_event
@@ -260,3 +260,14 @@ def mark_approved(
         actor=actor,
         correlation_id=correlation_id,
     )
+
+
+# --- operational counters (T-069a; §17.5 "review backlog and age") -------------------------------
+
+
+def revisions_awaiting_review(session: Session) -> int:
+    return session.execute(
+        select(func.count())
+        .select_from(MessageRevision)
+        .where(MessageRevision.state == MessageRevisionState.REVIEW_PENDING)
+    ).scalar_one()

@@ -44,8 +44,12 @@ leaves discretion. They live in this directory as `ADR-0NN-short-slug.md`.
 | [ADR-019](ADR-019-no-role-based-contact-matching.md) | ACCEPTED | Dedup matches on exact email or account+normalized name only; role-title matching and fuzzy scoring rejected. |
 | [ADR-020](ADR-020-the-lifecycle-owner-brackets-a-step-it-does-not-perform.md) | ACCEPTED | `campaigns` brackets the research step with its own job types; `research_and_evidence` stays a lifecycle reader and is not added to the owner map. |
 | [ADR-021](ADR-021-frontend-toolchain-defaults.md) | ACCEPTED (amended) | Frontend: npm + committed lockfile, Next.js 16 App Router, TypeScript 5.9 beyond `strict`, type-aware ESLint, Vitest; no styling until a screen needs it. Amended 2026-07-31: TS 5, not 6, because `openapi-typescript` requires it. |
-
 | [ADR-022](ADR-022-requesting-more-research-adds-evidence-without-moving-the-candidate.md) | ACCEPTED | Requesting more research captures evidence for a candidate that stays in `review_pending`; adding a `review_pending → research_pending` edge to §8.2 rejected. |
+| [ADR-023](ADR-023-an-approval-without-a-current-claim-set-is-refused.md) | ACCEPTED | The §11.3 transaction pins the product status version and claim set (§11.4); a campaign with no current claim set is refused rather than pinned null. |
+| [ADR-024](ADR-024-approver-columns-reference-a-user-by-email.md) | ACCEPTED | Approver columns are foreign keys to `app_user.email` with RESTRICT, not to `app_user.id`: the row still says who without a join, and it matches what the application already writes. |
+| [ADR-025](ADR-025-actor-columns-record-an-actor-not-a-user.md) | ACCEPTED | Columns recording who acted where the actor may be a service or the system stay strings holding an `Actor` id and take no foreign key; the approver columns of ADR-024 are the exception. |
+| [ADR-026](ADR-026-who-acted-is-recorded-twice-and-the-rule-is-where-the-value-travels.md) | ACCEPTED | A human is a UUID in actor columns and an email in approver columns, deliberately: the actor id ends up in logs and §15.5 wants contacts redacted, while the approver is a business record a reviewer reads. |
+| [ADR-027](ADR-027-where-a-development-process-may-register-the-fixture-source-adapter.md) | **PROPOSED** | Where a development process may register the Stage 1 fixture source adapter. Three options costed; (b) recommended. **Awaiting the user** — `T-172` stays `BLOCKED` until one is accepted. |
 
 ## Writing a local ADR
 

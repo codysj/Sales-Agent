@@ -57,7 +57,7 @@ from app.research_and_evidence.models import (
     SourceQuality,
     SourceType,
 )
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 from tests.test_model_gateway import make_versions
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
@@ -111,7 +111,7 @@ class World:
             version=1,
             product_id=self.product.id,
             text=CLAIM_TEXT,
-            approved_by="approver-1",
+            approved_by=APPROVER,
             approved_at=NOW - timedelta(days=1),
             effective_from=NOW - timedelta(days=1),
             expires_or_review_by=NOW + timedelta(days=90),
@@ -283,7 +283,7 @@ def test_an_expired_claim_id_is_refused(world: World) -> None:
         version=1,
         product_id=world.product.id,
         text="SYNTHETIC EXAMPLE CLAIM that is no longer current.",
-        approved_by="approver-1",
+        approved_by=APPROVER,
         approved_at=NOW - timedelta(days=10),
         effective_from=NOW - timedelta(days=10),
         expires_or_review_by=NOW - timedelta(hours=1),
@@ -304,7 +304,7 @@ def test_a_claim_approved_for_another_campaign_is_refused(world: World) -> None:
         version=1,
         product_id=world.product.id,
         text="SYNTHETIC EXAMPLE CLAIM for a different campaign.",
-        approved_by="approver-1",
+        approved_by=APPROVER,
         approved_at=NOW - timedelta(days=1),
         effective_from=NOW - timedelta(days=1),
         expires_or_review_by=NOW + timedelta(days=90),

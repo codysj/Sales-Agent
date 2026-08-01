@@ -27,7 +27,7 @@ from app.products_and_claims.status import (
     next_version_number,
     require_effective_status,
 )
-from tests.factories import NOW
+from tests.factories import NOW, PRODUCT_OWNER
 
 EARLIER = NOW - timedelta(days=30)
 LATER = NOW + timedelta(days=30)
@@ -46,7 +46,7 @@ def _status(product: Product, **overrides: object) -> ProductStatusVersion:
         "product_id": product.id,
         "version": 1,
         "readiness_category": ReadinessCategory.EVALUATION_OR_PILOT,
-        "approved_by": "product-owner-1",
+        "approved_by": PRODUCT_OWNER,
         "approved_at": EARLIER,
         "effective_from": EARLIER,
         "expires_or_review_by": None,

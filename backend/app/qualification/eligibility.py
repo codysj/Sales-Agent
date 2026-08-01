@@ -57,6 +57,7 @@ from app.campaigns.policy import CampaignPolicy
 from app.campaigns.service import require_current_policy
 from app.core.lifecycles import CampaignCandidateState
 from app.products_and_claims.status import get_effective_status
+from app.prospects.imports import ImportBatch
 from app.prospects.models import Account, Contact, ContactPoint, ContactPointType, VerificationState
 from app.prospects.suppression import find_suppression
 
@@ -85,12 +86,22 @@ IMPLEMENTED_RULES: Final = (
     Rule.SUPPRESSION,
     Rule.PRODUCT_READINESS,
     Rule.CONTACTABILITY,
+    Rule.APPROVED_SOURCE_BASIS,
 )
+
+#: Import source types §9.3 has approved as a basis for contacting somebody (`T-144b`).
+#:
+#: §9.3 begins with "manual/CSV import, human-assisted LinkedIn research, and approved public
+#: sources", and `csv` is the only one this repository has an import path for. **An allow-list,
+#: not a deny-list**: a source nobody approved must refuse by default, because the failure this
+#: rule exists to prevent is a scraped or unattributed row reaching outreach merely by existing
+#: in the database. Adding a member is a deliberate act and needs §9.3 to actually name it —
+#: LinkedIn automation is rejected outright (ADR-005, `Q-003`).
+APPROVED_SOURCE_TYPES: Final = frozenset({"csv"})
 
 #: Rule -> why it cannot run yet. Every `Rule` is in exactly one of these two collections.
 DEFERRED_RULES: Final = {
     Rule.EXISTING_RELATIONSHIP: "no CRM adapter exists; Q-001 unanswered, gate G-05 locked (T-143)",
-    Rule.APPROVED_SOURCE_BASIS: "a candidate records no import provenance yet (T-144)",
     Rule.OBVIOUS_NON_FIT: "Q-002 has not confirmed the ideal customer profile (T-145)",
 }
 
@@ -217,6 +228,57 @@ def _check_product_readiness(
     )
 
 
+def _check_source_basis(session: Session, contact: Contact | None) -> EligibilityFailure | None:
+    """§10.1 stage 1 "approved source basis": where did this identity come from? (`T-144b`)
+
+    **Fails closed three ways**, because each is a different way of not knowing:
+
+    * no contact at all — an account-level candidate has no identity to have a basis for;
+    * a contact with no recorded batch — the row exists but nobody said where it came from,
+      which is exactly the scraped-or-unattributed case §9.3 refuses to begin with;
+    * a batch whose `source_type` nobody approved.
+
+    Passing any of them by default would let a row reach outreach merely by existing in the
+    database, which is the failure this rule is for.
+
+    `inputs` names the source *type* and never the batch's file name or the person (§15.5): a
+    reviewer needs to know which rule fired and on what basis, and the record is one query away.
+    """
+    if contact is None:
+        return EligibilityFailure(
+            rule=Rule.APPROVED_SOURCE_BASIS,
+            reason="account-level candidate has no contact, so it has no recorded source basis",
+            inputs={"source": "none"},
+        )
+    if contact.source_import_batch_id is None:
+        return EligibilityFailure(
+            rule=Rule.APPROVED_SOURCE_BASIS,
+            reason=(
+                "the contact records no import provenance; an identity nobody can attribute to an "
+                "approved source may not be contacted (§9.3)"
+            ),
+            inputs={"source": "unrecorded"},
+        )
+
+    batch = session.get(ImportBatch, contact.source_import_batch_id)
+    if batch is None:  # pragma: no cover - the foreign key is RESTRICT, so this cannot happen
+        return EligibilityFailure(
+            rule=Rule.APPROVED_SOURCE_BASIS,
+            reason="the import batch this contact cites no longer exists",
+            inputs={"source": "missing"},
+        )
+    if batch.source_type not in APPROVED_SOURCE_TYPES:
+        approved = ", ".join(sorted(APPROVED_SOURCE_TYPES))
+        return EligibilityFailure(
+            rule=Rule.APPROVED_SOURCE_BASIS,
+            reason=(
+                f"source type {batch.source_type!r} is not on the §9.3 approved list ({approved})"
+            ),
+            inputs={"source": batch.source_type},
+        )
+    return None
+
+
 def _check_contactability(
     contact: Contact | None, points: Sequence[ContactPoint], policy: CampaignPolicy
 ) -> EligibilityFailure | None:
@@ -292,6 +354,7 @@ def evaluate(
             ),
             _check_product_readiness(session, campaign=campaign, policy=policy, at=moment),
             _check_contactability(contact, points, policy),
+            _check_source_basis(session, contact),
         )
         if failure is not None
     ]

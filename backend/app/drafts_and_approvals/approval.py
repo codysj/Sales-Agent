@@ -68,6 +68,28 @@ class ApprovalNotValid(ApprovalError):
     """
 
 
+class RevocationNeedsReason(ApprovalError):
+    """A revocation arrived with no reason, or with only whitespace (`T-137`, §17.6).
+
+    Enforced at the function rather than only in the HTTP schema. §17.6 lists revoking an approval
+    among the operational controls, and an operational action nobody can explain later is one a
+    reviewer cannot tell apart from a fault. The endpoint already refused a blank reason, which
+    left the rule true of one caller instead of true of the entity — and the worker, a fixture, or
+    the next entry point is not bound by a Pydantic model.
+    """
+
+
+class ApprovalAlreadyClosed(ApprovalError):
+    """The approval is already rejected, expired, or revoked (`T-137`, §8.2).
+
+    A *domain* refusal rather than the lifecycle's `IllegalTransition`. Both stop the write, but
+    an operator double-clicking Revoke has done nothing wrong, and "this approval is already
+    revoked" is the answer; a transition error reads as a defect and says nothing about which of
+    the three terminal states it landed in. The lifecycle table stays the authority on the edge —
+    this only names the case it already refuses.
+    """
+
+
 class Approval(Base, TimestampMixin):
     """One human decision about one exact message revision."""
 
@@ -108,8 +130,15 @@ class Approval(Base, TimestampMixin):
         ForeignKey("contact_point.id", ondelete="RESTRICT"), nullable=False
     )
 
-    #: Identity string until T-012's user table exists; T-136 converts it.
-    approver_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: Who granted this approval — a foreign key to `app_user.email` with `RESTRICT`
+    #: (`T-136c`, ADR-024). The email rather than the id, so the row still says *who* without a
+    #: join, and so §11.4's comparison against `send_command.record_versions["approver_id"]`
+    #: stays a string on both sides rather than a UUID against JSON text.
+    approver_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("app_user.email", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    )
 
     state: Mapped[ApprovalState] = mapped_column(nullable=False, default=ApprovalState.PENDING)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -342,7 +371,29 @@ def revoke(
     now: datetime | None = None,
     correlation_id: str | None = None,
 ) -> Approval:
-    """Withdraw an approval (§17.6 operational control)."""
+    """Withdraw an approval (§17.6 operational control).
+
+    Two refusals happen here rather than in the caller (`T-137`):
+
+    * **A blank reason.** Checked before anything is written, so a revocation nobody can explain
+      never reaches the audit trail in the first place.
+    * **An already-closed approval.** `pending` is deliberately *not* covered: §8.2 offers no
+      `pending -> revoked` edge either, and that is the lifecycle table's refusal to give, not
+      this function's — revoking something never approved is a different mistake from revoking
+      something twice, and `assert_transition` already says so precisely.
+    """
+    if not reason.strip():
+        raise RevocationNeedsReason(
+            f"cannot revoke approval {approval.id} without a reason; §17.6 operational actions "
+            f"are explicable or they are indistinguishable from a fault"
+        )
+    if approval.state in TERMINAL_STATES:
+        raise ApprovalAlreadyClosed(
+            f"approval {approval.id} is already {approval.state.value}; it was closed at "
+            f"{approval.closed_at.isoformat() if approval.closed_at else 'an unrecorded time'} "
+            f"and cannot be revoked again (§8.2)"
+        )
+
     return _transition(
         session,
         approval,

@@ -162,8 +162,9 @@ class UserRole(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id"), nullable=False)
     role_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("role.id"), nullable=False)
-    #: Who granted it. A string, not a foreign key: §12.2 wants attribution that survives the
-    #: granter's row being deactivated or replaced.
+    #: Who granted it. An `Actor` id, not a foreign key (ADR-025): §12.2 wants attribution that
+    #: survives the granter's row being deactivated or replaced, and the bootstrap that seeds
+    #: the first roles is not a person.
     granted_by: Mapped[str] = mapped_column(String(255), nullable=False)
 
     user: Mapped[User] = relationship(back_populates="roles")
@@ -215,6 +216,7 @@ class ServiceIdentityRole(Base, TimestampMixin):
     role_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     #: Always `false`. Carried so the composite foreign key above has something to join on.
     human_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: An `Actor` id, not a foreign key (ADR-025), for the same reason as `UserRole`.
     granted_by: Mapped[str] = mapped_column(String(255), nullable=False)
 
 

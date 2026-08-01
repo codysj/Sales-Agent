@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import AppEnv, Settings, get_settings
 from app.db.session import dispose_engines
-from app.identity.dependencies import db_session
+from app.identity.dependencies import SESSION_COOKIE, db_session
 from app.identity.models import Role, RoleKey, User, UserRole
 from app.identity.sessions import UserSession
 from app.main import create_app
@@ -134,13 +134,22 @@ def test_no_session_is_401_not_500(client: TestClient, reviewer: User) -> None:
     assert read.headers["www-authenticate"] == "Bearer"
 
 
-def test_no_cookie_is_set(client: TestClient, reviewer: User) -> None:
-    """`T-065a` refuses cookie authentication on mutations until `T-070` adds CSRF. Issuing a
-    cookie here would create exactly the exposure that refusal removes."""
+def test_the_session_cookie_is_not_script_readable(client: TestClient, reviewer: User) -> None:
+    """This asserted "no cookie is set" until `T-070a`, and the reason was CSRF: a cookie
+    mutation had no defence, so issuing one would have created the exposure `requires_mutation`
+    existed to remove. `T-070a` landed the defence, so the invariant is no longer "no cookie" but
+    "the credential cookie is not readable by script" — which is what makes the readable CSRF
+    cookie beside it useless on its own. The full attribute set is `tests/test_web_security.py`.
+    """
     response = client.post("/api/auth/stub-sign-in", json={"email": EMAIL})
 
-    assert response.cookies == {}
-    assert "set-cookie" not in {name.lower() for name in response.headers}
+    session_cookie = [
+        value
+        for value in response.headers.get_list("set-cookie")
+        if value.lower().startswith(SESSION_COOKIE)
+    ]
+    assert session_cookie, response.headers.get_list("set-cookie")
+    assert "httponly" in session_cookie[0].lower()
 
 
 # --- criterion 2: refused outside `local`, at the route ------------------------------------------

@@ -53,7 +53,7 @@ from app.research_and_evidence.models import (
     SourceQuality,
     SourceType,
 )
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW
 
 
 @pytest.fixture(autouse=True)
@@ -822,7 +822,7 @@ def add_readiness_and_claim(session: Session, world: World) -> ApprovedClaim:
             version=next_version_number(session, world.product.id),
             readiness_category=ReadinessCategory.EVALUATION_OR_PILOT,
             summary="SYNTHETIC placeholder readiness.",
-            approved_by="approver-1",
+            approved_by=APPROVER,
             approved_at=NOW - timedelta(days=1),
             effective_from=NOW - timedelta(days=1),
             expires_or_review_by=None,
@@ -833,7 +833,7 @@ def add_readiness_and_claim(session: Session, world: World) -> ApprovedClaim:
         version=1,
         product_id=world.product.id,
         text="SYNTHETIC EXAMPLE CLAIM — approved by nobody, never for a real recipient.",
-        approved_by="approver-1",
+        approved_by=APPROVER,
         approved_at=NOW - timedelta(days=1),
         effective_from=NOW - timedelta(days=1),
         expires_or_review_by=NOW + timedelta(days=90),

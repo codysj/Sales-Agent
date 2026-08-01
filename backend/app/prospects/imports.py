@@ -359,6 +359,9 @@ def import_csv(
     created: list[uuid.UUID] = []
     reused: list[uuid.UUID] = []
     rejections: list[RowRejection] = []
+    #: Contacts this batch brought into existence, stamped with it once it has an id.
+    #: Reused contacts are deliberately absent — see below (`T-144a`).
+    first_seen_here: list[Contact] = []
 
     for line, raw in enumerate(reader, start=FIRST_DATA_LINE):
         try:
@@ -373,6 +376,8 @@ def import_csv(
         contact, contact_is_new = _contact_for(session, account, row)
         point_is_new = _contact_point_for(session, contact, row)
 
+        if contact_is_new:
+            first_seen_here.append(contact)
         (created if contact_is_new or point_is_new else reused).append(contact.id)
 
     batch = ImportBatch(
@@ -385,6 +390,14 @@ def import_csv(
         rejected_count=len(rejections),
     )
     session.add(batch)
+    session.flush()
+
+    # Stamped after the batch exists, because the row it points at is created last.
+    # **Only the contacts this import created.** A contact matched to an existing row keeps
+    # the batch that first recorded it: an identity does not change where it came from
+    # because somebody uploaded a second file mentioning the same person (`T-144a`).
+    for contact in first_seen_here:
+        contact.source_import_batch_id = batch.id
     session.flush()
 
     # Counts and line numbers only. A rejection reason names a *field*, never the cell's content

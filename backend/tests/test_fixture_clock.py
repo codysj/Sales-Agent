@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.drafts_and_approvals.approval import DEFAULT_APPROVAL_TTL, Approval
 from tests.conftest import BACKEND
-from tests.factories import NOW, World
+from tests.factories import APPROVER, NOW, World
 
 #: The migration that created `approval`, and the constraint this task must not weaken.
 APPROVAL_MIGRATION = BACKEND / "alembic" / "versions" / "0133f6adb316_approval.py"
@@ -106,7 +106,7 @@ def test_the_database_refuses_an_approval_that_expired_before_it_was_created(
         Approval(
             message_revision_id=world.revision.id,
             recipient_contact_point_id=world.recipient.id,
-            approver_id="approver-1",
+            approver_id=APPROVER,
             approval_expires_at=datetime.now(UTC) - timedelta(days=1),
             approved_content_hash="a" * 64,
         )

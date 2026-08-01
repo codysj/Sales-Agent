@@ -55,7 +55,7 @@ from app.campaigns.models import Campaign
 from app.core.lifecycles import CampaignCandidateState, MessageRevisionState
 from app.drafts_and_approvals.editing import EditRefused, edit_revision
 from app.drafts_and_approvals.models import MessageDraft, MessageRevision
-from app.identity.dependencies import db_session, requires, requires_bearer
+from app.identity.dependencies import db_session, requires, requires_mutation
 from app.identity.rbac import Permission
 from app.identity.sessions import Principal
 from app.products_and_claims.claims import valid_claims_for_campaign
@@ -659,13 +659,13 @@ def edit_revision_endpoint(
     revision_id: uuid.UUID,
     request: EditRequest,
     session: Annotated[Session, Depends(db_session)],
-    principal: Annotated[Principal, Depends(requires_bearer(Permission.CORRECT_CANDIDATE))],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.CORRECT_CANDIDATE))],
 ) -> EditResponse:
     """§10.5: an edit creates revision N+1 and leaves N exactly as it was.
 
-    `requires_bearer`, not `requires`: this is a state-changing route, and a cookie is what a
-    CSRF attack rides on. See `identity.dependencies` — the exposure is removed until `T-070`
-    adds real protection, rather than accepted on trust.
+    `requires_mutation`, not `requires`: this is a state-changing route, and a cookie is what a
+    CSRF attack rides on. See `identity.dependencies` — a bearer token passes, and a cookie passes
+    only with a matching CSRF header (`T-070a`).
 
     The actor comes from the session (§12.2), never from the request body. Committed here rather
     than by the caller: the retired approval, the superseded revision, the new one, and its
@@ -726,9 +726,9 @@ def edit_revision_endpoint(
 # `T-066a` built these decisions; this is the surface they are reachable from. Three things are
 # deliberate and shared by both routes:
 #
-# * **`requires_bearer`, not `requires`.** They change state, and a cookie is what a CSRF attack
-#   rides on. Same reasoning as the edit route — the exposure is removed until `T-070` adds real
-#   protection, rather than accepted on trust.
+# * **`requires_mutation`, not `requires`.** They change state, and a cookie is what a CSRF attack
+#   rides on. Same reasoning as the edit route — a bearer token passes, and a cookie passes only
+#   with a matching CSRF header (`T-070a`).
 # * **The record version is checked.** The card was rendered at some moment; if the candidate moved
 #   since, the answer is `409` and a reload, not a decision applied to a state nobody read. A
 #   reviewer rejecting a candidate somebody else already approved is exactly the race worth losing
@@ -820,7 +820,7 @@ def reject_candidate_endpoint(
     candidate_id: uuid.UUID,
     request: RejectRequest,
     session: Annotated[Session, Depends(db_session)],
-    principal: Annotated[Principal, Depends(requires_bearer(Permission.CORRECT_CANDIDATE))],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.CORRECT_CANDIDATE))],
 ) -> DecisionResponse:
     """§8.2's `review_pending -> rejected`, with §10.6's category recorded against it."""
     candidate = _candidate_for_decision(session, candidate_id, request.record_version)
@@ -848,7 +848,7 @@ def defer_candidate_endpoint(
     candidate_id: uuid.UUID,
     request: DeferRequest,
     session: Annotated[Session, Depends(db_session)],
-    principal: Annotated[Principal, Depends(requires_bearer(Permission.CORRECT_CANDIDATE))],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.CORRECT_CANDIDATE))],
 ) -> DecisionResponse:
     """§8.2's `review_pending -> deferred`. A deferral with no waypoint is `409`, not a candidate
     that quietly leaves review with nothing to bring it back."""
@@ -906,7 +906,7 @@ def approve_candidate_endpoint(
     candidate_id: uuid.UUID,
     request: ApproveRequest,
     session: Annotated[Session, Depends(db_session)],
-    principal: Annotated[Principal, Depends(requires_bearer(Permission.APPROVE_CANDIDATE))],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.APPROVE_CANDIDATE))],
 ) -> ApproveResponse:
     """§8.3 step 9: candidate approval, which queues the drafting job.
 
@@ -989,7 +989,7 @@ def request_more_research_endpoint(
     candidate_id: uuid.UUID,
     request: RequestResearchRequest,
     session: Annotated[Session, Depends(db_session)],
-    principal: Annotated[Principal, Depends(requires_bearer(Permission.CORRECT_CANDIDATE))],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.CORRECT_CANDIDATE))],
 ) -> DecisionResponse:
     """ADR-022: this queues an evidence pass and moves the candidate nowhere.
 

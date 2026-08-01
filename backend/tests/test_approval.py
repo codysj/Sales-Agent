@@ -18,11 +18,14 @@ from app.audit_and_operations.models import ActorType, AuditEvent
 from app.audit_and_operations.service import Actor
 from app.campaigns.candidate import create_candidate
 from app.campaigns.models import Campaign
-from app.core.lifecycles import IllegalTransition
+from app.core.lifecycles import ApprovalState, IllegalTransition
 from app.drafts_and_approvals.approval import (
     DEFAULT_APPROVAL_TTL,
     Approval,
+    ApprovalAlreadyClosed,
+    ApprovalError,
     ApprovalNotValid,
+    RevocationNeedsReason,
     approve,
     expire,
     invalidation_reason,
@@ -42,7 +45,7 @@ from app.products_and_claims.models import (
     ReadinessCategory,
 )
 from app.prospects.models import Account, Contact, ContactPoint, ContactPointType
-from tests.factories import NOW
+from tests.factories import APPROVER, CLAIM_OWNER, NOW, OWNER_TWO, PRODUCT_OWNER
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 LATER = NOW + timedelta(days=30)
@@ -100,7 +103,7 @@ class World:
             product_id=self.product.id,
             version=1,
             readiness_category=ReadinessCategory.EVALUATION_OR_PILOT,
-            approved_by="product-owner-1",
+            approved_by=PRODUCT_OWNER,
             approved_at=NOW - timedelta(days=1),
             effective_from=NOW - timedelta(days=1),
         )
@@ -108,7 +111,7 @@ class World:
             product_id=self.product.id,
             campaign_id=self.campaign.id,
             version=1,
-            approved_by="claim-owner-1",
+            approved_by=CLAIM_OWNER,
             approved_at=NOW - timedelta(days=1),
         )
         session.add_all([self.status, self.claim_set])
@@ -143,7 +146,7 @@ def approved_approval(db_session: Session, world: World) -> Approval:
     approval = request_approval(
         db_session,
         revision=world.revision,
-        approver_id="approver-1",
+        approver_id=APPROVER,
         actor=OPERATOR,
         product_status_version_id=world.status.id,
         approved_claim_set_id=world.claim_set.id,
@@ -168,7 +171,7 @@ def test_an_approval_without_a_revision_is_impossible(db_session: Session, world
         Approval(
             message_revision_id=None,
             recipient_contact_point_id=world.recipient.id,
-            approver_id="approver-1",
+            approver_id=APPROVER,
             approval_expires_at=LATER,
             approved_content_hash="a" * 64,
         )
@@ -205,7 +208,7 @@ def test_only_one_live_approval_per_revision(db_session: Session, world: World) 
 
     with pytest.raises(IntegrityError) as exc:
         request_approval(
-            db_session, revision=world.revision, approver_id="approver-2", actor=OPERATOR, now=NOW
+            db_session, revision=world.revision, approver_id=OWNER_TWO, actor=OPERATOR, now=NOW
         )
 
     assert "uq_approval_live_per_revision" in str(exc.value)
@@ -216,13 +219,13 @@ def test_a_rejected_approval_frees_the_revision_for_a_new_request(
 ) -> None:
     """The uniqueness index is partial, so a closed approval does not block re-review."""
     first = request_approval(
-        db_session, revision=world.revision, approver_id="approver-1", actor=OPERATOR, now=NOW
+        db_session, revision=world.revision, approver_id=APPROVER, actor=OPERATOR, now=NOW
     )
     reject(db_session, first, actor=OPERATOR, reason="tone", now=NOW)
     db_session.flush()
 
     second = request_approval(
-        db_session, revision=world.revision, approver_id="approver-2", actor=OPERATOR, now=NOW
+        db_session, revision=world.revision, approver_id=OWNER_TWO, actor=OPERATOR, now=NOW
     )
     db_session.flush()
 
@@ -366,7 +369,7 @@ def test_an_expired_approval_cannot_return_to_approved(db_session: Session, worl
 
 def test_a_rejected_approval_cannot_return_to_approved(db_session: Session, world: World) -> None:
     approval = request_approval(
-        db_session, revision=world.revision, approver_id="approver-1", actor=OPERATOR, now=NOW
+        db_session, revision=world.revision, approver_id=APPROVER, actor=OPERATOR, now=NOW
     )
     reject(db_session, approval, actor=OPERATOR, reason="not a fit", now=NOW)
 
@@ -386,7 +389,7 @@ def test_a_closed_approval_records_when_and_why(db_session: Session, world: Worl
 
 def test_a_pending_approval_authorizes_nothing(db_session: Session, world: World) -> None:
     approval = request_approval(
-        db_session, revision=world.revision, approver_id="approver-1", actor=OPERATOR, now=NOW
+        db_session, revision=world.revision, approver_id=APPROVER, actor=OPERATOR, now=NOW
     )
     db_session.flush()
 
@@ -429,10 +432,125 @@ def test_revocation_is_audited_with_its_reason(db_session: Session, world: World
     assert event.payload["reason"] == "product paused"
 
 
+# --- T-137: the revocation entry point enforces its own rules ------------------------------------
+#
+# Most of this task already existed when it was reached: `T-021` gave `revoke()` its transition,
+# actor, reason, and audit event, and `T-068a` gave it an endpoint and proved a revoked approval
+# cannot dispatch. What did not exist is either rule holding at the *function*. The reason was
+# required by a Pydantic model, so it was true of one caller rather than of the entity; and
+# revoking twice arrived as `IllegalTransition`, which reads as a defect rather than as an answer.
+#
+# Both tests below call `revoke()` directly for exactly that reason — routing them through the
+# endpoint would prove the schema works, which was never in doubt.
+
+
+def test_a_revocation_without_a_reason_is_refused(db_session: Session, world: World) -> None:
+    """Criterion 2 at the entry point. §17.6's operational actions are explicable."""
+    approval = approved_approval(db_session, world)
+
+    with pytest.raises(RevocationNeedsReason):
+        revoke(db_session, approval, actor=OPERATOR, reason="", now=NOW)
+
+    assert approval.state is ApprovalState.APPROVED
+
+
+@pytest.mark.parametrize("blank", ["", " ", "\t", "\n  \n"])
+def test_a_whitespace_only_reason_is_not_a_reason(
+    db_session: Session, world: World, blank: str
+) -> None:
+    """Every shape of blank, not just the empty string: a space satisfies a `min_length=1` schema
+    and records a revocation nobody can explain."""
+    approval = approved_approval(db_session, world)
+
+    with pytest.raises(RevocationNeedsReason):
+        revoke(db_session, approval, actor=OPERATOR, reason=blank, now=NOW)
+
+
+def test_a_refused_revocation_writes_no_audit_event(db_session: Session, world: World) -> None:
+    """Refused before anything is written: an audit trail that recorded the attempt as a
+    revocation would be worse than none, and the transition never happened."""
+    approval = approved_approval(db_session, world)
+    before = (
+        db_session.query(AuditEvent)
+        .filter_by(entity_type="approval", entity_id=str(approval.id))
+        .count()
+    )
+
+    with pytest.raises(RevocationNeedsReason):
+        revoke(db_session, approval, actor=OPERATOR, reason="   ", now=NOW)
+
+    assert (
+        db_session.query(AuditEvent)
+        .filter_by(entity_type="approval", entity_id=str(approval.id))
+        .count()
+        == before
+    )
+
+
+@pytest.mark.parametrize("closer", ["revoke", "expire"])
+def test_revoking_an_already_closed_approval_is_a_domain_refusal(
+    db_session: Session, world: World, closer: str
+) -> None:
+    """Criterion 3. Refused rather than silently ignored, and refused as an *approval* error:
+    an operator double-clicking Revoke has done nothing wrong, and the answer they need is which
+    terminal state it is already in."""
+    approval = approved_approval(db_session, world)
+    if closer == "revoke":
+        revoke(db_session, approval, actor=OPERATOR, reason="operator withdrew it", now=NOW)
+    else:
+        expire(db_session, approval, actor=OPERATOR, now=NOW)
+    db_session.flush()
+
+    with pytest.raises(ApprovalAlreadyClosed, match=approval.state.value):
+        revoke(db_session, approval, actor=OPERATOR, reason="again", now=NOW)
+
+
+def test_the_closed_refusal_is_not_a_lifecycle_error(db_session: Session, world: World) -> None:
+    """The distinction this task exists to draw, asserted rather than described: `ApprovalError`
+    is what the endpoint maps to `409`, and `IllegalTransition` is what it used to arrive as."""
+    approval = approved_approval(db_session, world)
+    revoke(db_session, approval, actor=OPERATOR, reason="operator withdrew it", now=NOW)
+    db_session.flush()
+
+    with pytest.raises(ApprovalError) as refusal:
+        revoke(db_session, approval, actor=OPERATOR, reason="again", now=NOW)
+
+    assert not isinstance(refusal.value, IllegalTransition)
+
+
+def test_revoking_a_never_approved_approval_stays_a_lifecycle_refusal(
+    db_session: Session, world: World
+) -> None:
+    """Deliberately *not* absorbed into `ApprovalAlreadyClosed`. §8.2 has no
+    `pending -> revoked` edge, so revoking something nobody approved is the lifecycle table's
+    refusal to give — a different mistake from revoking something twice, and one the endpoint
+    still maps to `409` through its `LifecycleError` arm."""
+    approval = request_approval(
+        db_session, revision=world.revision, approver_id=APPROVER, actor=OPERATOR, now=NOW
+    )
+
+    with pytest.raises(IllegalTransition):
+        revoke(db_session, approval, actor=OPERATOR, reason="never mind", now=NOW)
+
+
+def test_a_revoked_approval_authorizes_nothing(db_session: Session, world: World) -> None:
+    """Criterion 1, restated at this entry point. `T-068a` proved it end to end from the endpoint
+    (`tests/test_approval_lifecycle.py::test_a_revoked_approval_cannot_dispatch`); this is the
+    same guarantee where `revoke()` itself can see it."""
+    approval = approved_approval(db_session, world)
+
+    revoke(db_session, approval, actor=OPERATOR, reason="product paused", now=NOW)
+    db_session.flush()
+
+    assert not is_valid(db_session, approval, now=NOW)
+    with pytest.raises(ApprovalNotValid, match="revoked"):
+        require_valid(db_session, approval, now=NOW)
+
+
 def test_approvals_with_no_product_claim_pin_nothing(db_session: Session, world: World) -> None:
     """A message making no product statement has no product status to invalidate it."""
     approval = request_approval(
-        db_session, revision=world.revision, approver_id="approver-1", actor=OPERATOR, now=NOW
+        db_session, revision=world.revision, approver_id=APPROVER, actor=OPERATOR, now=NOW
     )
     approve(db_session, approval, actor=OPERATOR, now=NOW)
     db_session.flush()

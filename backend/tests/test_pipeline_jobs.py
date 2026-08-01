@@ -24,6 +24,7 @@ rolls its transaction back, and a commit inside it would defeat that. `execute` 
 covers those.
 """
 
+import ast
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -99,7 +100,7 @@ from app.research_and_evidence.jobs import (
     handle_recapture,
 )
 from app.research_and_evidence.models import EvidenceSnapshot
-from tests.factories import NOW
+from tests.factories import APPROVER, NOW, a_source_batch
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 
@@ -173,7 +174,7 @@ class World:
             session,
             campaign_id=self.campaign.id,
             policy=CampaignPolicy(),
-            approved_by="approver-1",
+            approved_by=APPROVER,
             approved_at=NOW,
         )
 
@@ -186,7 +187,7 @@ class World:
                 version=next_version_number(session, self.product.id),
                 readiness_category=ReadinessCategory.EVALUATION_OR_PILOT,
                 summary="SYNTHETIC placeholder readiness.",
-                approved_by="approver-1",
+                approved_by=APPROVER,
                 approved_at=NOW,
                 effective_from=NOW,
                 expires_or_review_by=None,
@@ -194,7 +195,13 @@ class World:
         )
         session.flush()
 
-        self.contact = Contact(account_id=self.account.id, full_name="SYNTHETIC Person")
+        self.contact = Contact(
+            account_id=self.account.id,
+            full_name="SYNTHETIC Person",
+            # An approved source basis, so this pipeline exercises the stages under test
+            # rather than stopping at §10.1 stage 1 provenance (`T-144b`).
+            source_import_batch_id=a_source_batch(session).id,
+        )
         session.add(self.contact)
         session.flush()
         session.add(
@@ -317,7 +324,7 @@ def draftable_world(db_session: Session, qualifiable_world: World) -> World:
         version=1,
         product_id=qualifiable_world.product.id,
         text="SYNTHETIC EXAMPLE CLAIM — offered for evaluation deployments. Approved by nobody.",
-        approved_by="approver-1",
+        approved_by=APPROVER,
         approved_at=NOW - timedelta(days=1),
         effective_from=NOW - timedelta(days=1),
         expires_or_review_by=NOW + timedelta(days=90),
@@ -574,7 +581,7 @@ def test_two_campaigns_produce_two_candidates_and_two_eligibility_jobs(
         db_session,
         campaign_id=second.id,
         policy=CampaignPolicy(),
-        approved_by="approver-1",
+        approved_by=APPROVER,
         approved_at=NOW,
     )
 
@@ -821,6 +828,48 @@ def test_no_production_module_registers_an_adapter() -> None:
     ]
 
     assert callers == [], f"production modules registering a source adapter: {callers}"
+
+
+#: The two invariants that name the CLI in their docstring and then forbid it in their walk
+#: (`T-175`). Both guard the same rule — no production path wires a fixture — and both
+#: implement it as "no file under `app/` at all", which catches `app/cli.py`, the module
+#: `T-040` explicitly licenses to import `app.fixtures`.
+SELF_CONTRADICTING_INVARIANTS = (
+    "test_no_production_module_registers_an_adapter",
+    "test_no_production_module_installs_a_fake_adapter",
+)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="T-172/ADR-027: the walk forbids `cli.py`, which its own docstring sanctions",
+)
+@pytest.mark.parametrize("invariant", SELF_CONTRADICTING_INVARIANTS)
+def test_the_adapter_invariants_permit_the_caller_their_docstrings_name(invariant: str) -> None:
+    """The rule and its implementation disagree, and the gap is where `T-172` got stuck (`T-175`).
+
+    Each of these says registering or installing is *"the CLI's or a test's act"* and then walks
+    every file under `app/`, excluding only `registry.py` — so the call in `app/cli.py` that
+    `ADR-027`'s option (b) needs fails them. Proven: adding one produces `production modules
+    registering a source adapter: ['cli.py']`.
+
+    **Deliberately `xfail(strict=True)` rather than fixed here.** Excluding `cli.py` is part of
+    whichever option `ADR-027` gets, and choosing one is the user's act. When `T-172` lands the
+    exclusion these flip to `XPASS`, strict mode fails the run, and whoever is looking deletes
+    the marker — which is the point: a defect that heals silently is one nobody notices.
+    """
+    # Bounded by AST, not by splitting on the function's name: the first version did that and
+    # passed, because *this* test's source contains those names too, so the slice ran past the
+    # invariant into this docstring and found its own `cli.py`. `strict=True` caught it as an
+    # `XPASS`. A detector that can read itself is not a detector.
+    module = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    found = next(
+        node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == invariant
+    )
+
+    assert "cli.py" in ast.unparse(found), (
+        f"{invariant} still forbids `cli.py`, the caller its docstring names"
+    )
 
 
 def test_an_unregistered_adapter_name_is_refused() -> None:
