@@ -8,7 +8,7 @@ The property that matters is that a crash loses no work *and* duplicates no effe
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 import structlog
@@ -31,9 +31,9 @@ from app.jobs_and_outbox.registry import JobRegistry
 from app.jobs_and_outbox.retry import RetryPolicy
 from app.jobs_and_outbox.runner import execute
 from app.prospects.models import Account
+from tests.factories import NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 POLICY = RetryPolicy(max_attempts=3, base_delay=timedelta(seconds=1), jitter=0.0)
 
 

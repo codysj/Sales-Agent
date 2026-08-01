@@ -12,7 +12,7 @@ working when `Q-004` finally picks a provider.
 import json
 import secrets
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import pytest
 import structlog
@@ -39,9 +39,9 @@ from app.outreach_and_replies.webhooks import (
     verify_freshness,
     verify_signature,
 )
+from tests.factories import NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 PROVIDER = "synthetic-provider"
 
 

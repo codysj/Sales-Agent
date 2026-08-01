@@ -1,0 +1,15 @@
+{
+  "document_id": "SYNTHETIC-DOC-bravo-depot",
+  "account_domain": "bravo.example.org",
+  "source_type": "synthetic_fixture",
+  "source_quality": "high",
+  "retention_class": "public_unrestricted",
+  "contains_personal_or_confidential_data": true,
+  "text": "SYNTHETIC EXAMPLE DOCUMENT. SYNTHETIC-Account-Bravo is described as operating a placeholder vehicle depot. A named placeholder contact appears in this document, which is why it is classified as containing personal data.",
+  "facts": [
+    {
+      "excerpt": "SYNTHETIC: the account is described as operating a vehicle depot, with SYNTHETIC Person Bravo named as the facilities contact.",
+      "field_or_span": "contact_block"
+    }
+  ]
+}

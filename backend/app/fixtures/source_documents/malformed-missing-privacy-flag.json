@@ -1,0 +1,8 @@
+{
+  "document_id": "SYNTHETIC-DOC-malformed",
+  "account_domain": "alpha.example.com",
+  "text": "SYNTHETIC EXAMPLE DOCUMENT that omits the mandatory privacy classification, so the loader has something real to refuse.",
+  "facts": [
+    {"excerpt": "SYNTHETIC: this document should never be loaded.", "field_or_span": "body"}
+  ]
+}

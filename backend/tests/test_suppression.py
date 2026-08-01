@@ -6,7 +6,7 @@ scope is not consulted, or campaign configuration is allowed to override it.
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
@@ -26,8 +26,8 @@ from app.prospects.suppression import (
     record_suppression,
     require_not_suppressed,
 )
+from tests.factories import NOW
 
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 EARLIER = NOW - timedelta(days=1)
 LATER = NOW + timedelta(days=1)
 

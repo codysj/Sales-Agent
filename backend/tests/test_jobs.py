@@ -5,8 +5,11 @@ the same queue must never get the same job. That is tested against two real data
 not by mocking the lock.
 """
 
+import ast
+import importlib
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
+from pathlib import Path
 
 import pytest
 import structlog
@@ -37,12 +40,12 @@ from app.jobs_and_outbox.registry import (
 )
 from app.jobs_and_outbox.retry import RetryPolicy
 from app.jobs_and_outbox.runner import execute, run_once
+from tests.factories import NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 #: §17.1 makes retry policy mandatory per job type (T-031). These tests are about leasing, so the
 #: policy is deliberately permissive and the retry semantics are exercised in `test_job_retries.py`.
 TEST_POLICY = RetryPolicy(max_attempts=5, base_delay=timedelta(seconds=1), jitter=0.0)
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 
 
 class NoOpPayload(BaseModel):
@@ -437,3 +440,164 @@ def test_lease_expiry_is_detectable(db_session: Session, noop_registry: JobRegis
 
     assert not leased[0].is_lease_expired_at(NOW)
     assert leased[0].is_lease_expired_at(NOW + timedelta(hours=1))
+
+
+# --- T-148: a started worker knows every job type this build defines -----------------------------
+
+APP_DIR = Path(__file__).resolve().parents[1] / "app"
+
+
+def modules_defining_job_types() -> list[str]:
+    """Every module under `app/` with a module-level `register(registry: JobRegistry | None)`.
+
+    Discovered by AST rather than listed, so this test cannot go stale: a module added next month
+    is found without anyone remembering to add it here. Matched on the *exact* name `register`
+    plus a `JobRegistry` annotation, which is what separates a job-type registrar from
+    `register_prompt_versions`, `register_source_adapter`, and `register_job_type` itself.
+    """
+    found: list[str] = []
+    for path in sorted(APP_DIR.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef) or node.name != "register":
+                continue
+            annotations = [
+                ast.unparse(argument.annotation)
+                for argument in node.args.args
+                if argument.annotation is not None
+            ]
+            if any("JobRegistry" in annotation for annotation in annotations):
+                found.append(str(path.relative_to(APP_DIR)).replace("\\", "/").removesuffix(".py"))
+    return found
+
+
+def test_the_discovery_finds_the_modules_that_define_job_types() -> None:
+    """A guard on the guard. Discovery that found nothing would make the test below vacuously
+    green, which is the failure mode a hand-maintained list has too."""
+    discovered = modules_defining_job_types()
+
+    assert len(discovered) >= 5, discovered
+    assert "campaigns/jobs" in discovered
+    assert "drafts_and_approvals/invalidation" in discovered
+
+
+def test_the_discovery_ignores_registrars_that_are_not_job_types() -> None:
+    """`register_prompt_versions`, `register_source_adapter`, and `register_job_type` all match a
+    loose `^def register` grep. None of them registers a job type."""
+    discovered = modules_defining_job_types()
+
+    for other in (
+        "model_gateway/prompts/__init__",
+        "model_gateway/schemas/__init__",
+        "research_and_evidence/adapters/registry",
+        "jobs_and_outbox/registry",
+    ):
+        assert other not in discovered
+
+
+def test_the_worker_registers_every_job_type_the_codebase_defines() -> None:
+    """Criterion 1, and the reason this task exists.
+
+    Before `T-148`, `app/worker.py` called no module's `register()` at all: a started worker's
+    registry was empty, so it leased jobs it had no handler for and retried each on a fixed
+    backoff — busy, and completing nothing. Compared as *sets of job-type names* rather than of
+    modules, because that is the thing a worker actually needs to hold.
+    """
+    from app import worker
+
+    discovered = JobRegistry()
+    for dotted in modules_defining_job_types():
+        name = "app." + dotted.removesuffix("/__init__").replace("/", ".")
+        importlib.import_module(name).register(discovered)
+
+    wired = JobRegistry()
+    worker.register_job_types(wired)
+
+    assert set(wired.names()) == set(discovered.names()), (
+        f"the worker is missing {sorted(set(discovered.names()) - set(wired.names()))}"
+    )
+
+
+def test_the_worker_registers_the_claim_invalidation_job() -> None:
+    """Criterion 2. `claims.invalidate_by_version` (`T-056`) had this defect from the day it was
+    written; nothing caught it because every test registers what it needs."""
+    from app import worker
+    from app.drafts_and_approvals.invalidation import INVALIDATION_JOB_TYPE
+
+    wired = JobRegistry()
+    worker.register_job_types(wired)
+
+    assert INVALIDATION_JOB_TYPE in wired.names()
+
+
+def test_the_worker_registers_the_whole_pipeline() -> None:
+    """The eight types `tests/test_shadow_slice.py` drives, named here so a reader of this file
+    sees what a worker is expected to be able to run."""
+    from app import worker
+
+    wired = JobRegistry()
+    worker.register_job_types(wired)
+
+    assert set(wired.names()) >= {
+        "campaigns.create_membership",
+        "campaigns.start_research",
+        "campaigns.complete_research",
+        "qualification.apply_eligibility",
+        "qualification.qualify_candidate",
+        "research.capture_evidence",
+        "drafts.draft_message",
+        "drafts.validate_revision",
+    }
+
+
+def test_registering_twice_is_a_no_op() -> None:
+    """A restarted worker, or a test that calls it after something else did, must not collide:
+    `JobRegistry.register` raises on a duplicate name."""
+    from app import worker
+
+    wired = JobRegistry()
+    worker.register_job_types(wired)
+    before = set(wired.names())
+
+    worker.register_job_types(wired)
+
+    assert set(wired.names()) == before
+
+
+def test_no_registered_job_type_is_consequential() -> None:
+    """Stage 1 has no external effect to pause, so §17.6's pause covers nothing yet.
+
+    Recorded as an assertion rather than an assumption: the day a send job is added, this fails,
+    and whoever adds it has to decide deliberately whether a pause must stop it.
+    """
+    from app import worker
+
+    wired = JobRegistry()
+    worker.register_job_types(wired)
+
+    assert wired.consequential_names() == []
+
+
+def test_main_registers_before_it_starts_working() -> None:
+    """The wiring only helps if the process actually runs it.
+
+    Asserted on `main`'s AST rather than by starting a worker, which installs signal handlers and
+    loops. The ordering matters too: registering after the first pass would leave that pass
+    leasing jobs it could not run.
+    """
+    import inspect
+
+    from app import worker
+
+    body = ast.parse(inspect.getsource(worker.main)).body[0]
+    assert isinstance(body, ast.FunctionDef)
+    called = [
+        node.func.id
+        for node in ast.walk(body)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    ]
+
+    assert "register_job_types" in called
+    assert called.index("register_job_types") < called.index("build_effect_adapter"), (
+        "register before the worker builds anything it would run jobs with"
+    )

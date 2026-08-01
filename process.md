@@ -54,7 +54,16 @@ architecture change, and it stops for the user.
 
 ## 3. Preflight (every run, in order)
 
-1. Read `process.md` (this file), `tasks.md`, and `AGENTS.md`.
+**Read `tasks.md` by targeted query, never end to end.** It is a ledger of ~70 task blocks and it is
+built to be grepped: every task is a `#### T-###` heading, every status is a `- **Status:**` line within
+six lines of it, and the header table names the next task. A whole-file read costs roughly 77,000
+tokens and crowds out the code you actually need; the four reads below cost about 1,500. Preserve that
+structure — stable headings, predictable status lines, numbered sections — so this stays true.
+
+1. Read `process.md` (this file) and `AGENTS.md` in full — both are short and both are protocol.
+   From `tasks.md` read only: the header table (lines 1–25), then the `#### T-###` block for the
+   candidate task, then §5 for its gate and §6 for its `Q-###`. Grep for `IN_PROGRESS` to confirm
+   ownership. Read a completed task's block only when its evidence bears on the current one.
 2. Read the specification sections named by the candidate task. Read the section, not a remembered summary.
 3. Run `git status` and review recent relevant changes. Note every pre-existing modification — it belongs to the user.
 4. Read the code, migrations, and tests the task will touch.
@@ -136,9 +145,10 @@ header's `IN_PROGRESS` row to its ID. Exactly one task may hold this status.
 4. Add newly discovered work as **new tasks with new stable IDs**, correct stage, priority, dependencies, and acceptance criteria. Never widen the current task to absorb it. Never reuse or renumber an ID.
 5. Update the header: last-updated date, current stage, current stage exit gate, and the single next recommended `READY` task.
 6. If a stage exit gate's conditions are now met with recorded evidence, mark that gate open in §5 and link the evidence document. Only then may the newly unlocked tasks become `READY`.
-7. Append one row to the §9 progress log: date, task ID, result, verification evidence, new follow-up or blocker.
-8. Never mark an epic `DONE` because a scaffold exists. Every sub-task must be `DONE` on its own evidence.
-9. Keep `tasks.md` internally valid: unique IDs, dependencies pointing at real task IDs or named gates, at most one `IN_PROGRESS`, and no `READY` task behind a locked gate.
+7. Append one row to the §9 progress log. **It is a chronological index, not a second copy of the evidence** — date, task ID, result, one clause of what shipped, and a pointer to the task block. Keep it under about 200 characters. Detail belongs in the task entry (step 1) and rationale belongs in the module docstring, where it travels with the code; a third copy in the log is what took this file to 277 KB.
+8. **Archive a stage's task section when its exit gate closes.** Move that stage's decomposed task blocks to `docs/ledger/stage-N.md`, leave a one-line pointer in their place, and keep the header, gates, and registers in `tasks.md`. This caps any single ledger file near its current size instead of letting it reach ~470 KB by the end of Stage 7. Do it at the gate, not before — an open stage's blocks are read every run.
+9. Never mark an epic `DONE` because a scaffold exists. Every sub-task must be `DONE` on its own evidence.
+10. Keep `tasks.md` internally valid: unique IDs, dependencies pointing at real task IDs or named gates, at most one `IN_PROGRESS`, and no `READY` task behind a locked gate.
 
 ## 8. Blocked and idle behavior
 

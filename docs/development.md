@@ -37,9 +37,13 @@ flipped until the matching gate in [tasks.md](../tasks.md) §5 is unlocked:
 | `SHADOW_MODE` | `true` | the relevant stage gate; blocks every external-effect adapter |
 | `OUTBOUND_EMAIL_ENABLED` | `false` | **G-07** (email execution), then **G-08** (live outreach) |
 | `MODEL_PROVIDER` | `fake` | **G-03** (production-like model data use), `Q-012` |
+| `ALLOW_REAL_MODEL_PROVIDER` | `false` | **G-03**; the second lock on `build_provider` (`T-050`) |
 
 `ModelProvider` deliberately has one member. Adding a real provider is a reviewable code
-change (task `T-050`), not a configuration tweak.
+change (task `T-050`), not a configuration tweak — and adding one is still not enough:
+`app/model_gateway/registry.py` also requires `ALLOW_REAL_MODEL_PROVIDER`, and then looks the
+provider up in `REAL_PROVIDER_ADAPTERS`, which is empty. Three locks, because the first two are
+each one edit away from being wrong.
 
 ## Database
 
@@ -50,6 +54,23 @@ docker compose down -v && docker compose up -d db
 ```
 
 Verified working configuration (`T-134`): PostgreSQL 16.14, published on host port **55432**.
+
+### Synthetic fixtures
+
+Load the two placeholder campaign worlds — sodium storage and DC fast charging, each with a
+product, an explicit readiness version, target segments, a policy version, approved claims, and a
+published claim set:
+
+```bash
+uv run alembic upgrade head && uv run python -m app.cli seed_synthetic
+```
+
+Re-running it is a no-op (`created` comes back empty), so it is safe in a shell history. Both
+campaigns arrive **paused**; starting one is a deliberate act. Every row is marked synthetic and
+every name carries a `SYNTHETIC-` prefix, and the command refuses to run unless `APP_ENV` is
+`local` or `test` — a placeholder claim must never sit beside real data. `Q-017`, `Q-021`, and
+`Q-022` have delivered no approved brief or claim set, so nothing here resembles a real product
+fact; `backend/tests/test_fixtures.py` enforces that no fixture string carries a digit.
 
 ### Migrations
 

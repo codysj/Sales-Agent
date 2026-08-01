@@ -1,0 +1,29 @@
+{
+  "fixture_id": "SYNTHETIC-OUT-slice-qualification-default",
+  "match": "default",
+  "output": {
+    "campaign_id": "SYNTHETIC-campaign",
+    "campaign_candidate_id": "SYNTHETIC-candidate",
+    "eligibility_failures": [],
+    "opportunity_type": "pilot",
+    "fit_summary": "SYNTHETIC: the account is described as evaluating site infrastructure.",
+    "use_case": "SYNTHETIC: resilience at a single operating location.",
+    "buyer_role_assessment": "SYNTHETIC: the named contact is described as an operations lead.",
+    "fit_dimension_scores": {
+      "product_fit": 3,
+      "buyer_relevance": 3,
+      "timing": 2,
+      "commercial_scale": 2
+    },
+    "evidence_completeness": "partial",
+    "source_quality": "medium",
+    "personalization_evidence_ids": [],
+    "applicable_approved_claim_ids": [],
+    "ambiguities": ["SYNTHETIC: the deployment timeline is not stated"],
+    "risks": [],
+    "missing_information": ["SYNTHETIC: no stated budget"],
+    "human_review_required": true
+  },
+  "input_tokens": 120,
+  "output_tokens": 90
+}

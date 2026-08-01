@@ -1,0 +1,28 @@
+{
+  "fixture_id": "SYNTHETIC-OUT-unsupported_claim",
+  "match": "SYNTHETIC-MATCH-unsupported_claim",
+  "failure_mode": "unsupported_claim",
+  "output": {
+    "campaign_id": "SYNTHETIC-campaign",
+    "campaign_candidate_id": "SYNTHETIC-candidate",
+    "eligibility_failures": [],
+    "opportunity_type": "direct_sale",
+    "fit_summary": "SYNTHETIC: output that is schema-valid and still must not be sent.",
+    "use_case": "SYNTHETIC use case.",
+    "buyer_role_assessment": "SYNTHETIC buyer role assessment.",
+    "fit_dimension_scores": {
+      "product_fit": 5,
+      "buyer_relevance": 5,
+      "timing": 5,
+      "commercial_scale": 5
+    },
+    "evidence_completeness": "complete",
+    "source_quality": "high",
+    "personalization_evidence_ids": [],
+    "applicable_approved_claim_ids": ["SYNTHETIC-CLAIM-that-was-never-approved"],
+    "ambiguities": [],
+    "risks": [],
+    "missing_information": [],
+    "human_review_required": false
+  }
+}

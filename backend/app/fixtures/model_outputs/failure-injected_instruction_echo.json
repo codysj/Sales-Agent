@@ -1,0 +1,5 @@
+{
+  "fixture_id": "SYNTHETIC-OUT-injected_instruction_echo",
+  "match": "SYNTHETIC-MATCH-injected_instruction_echo",
+  "failure_mode": "injected_instruction_echo"
+}

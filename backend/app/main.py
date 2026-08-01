@@ -22,6 +22,10 @@ from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.core.settings import Settings, get_settings
 from app.db.session import check_database, dispose_engines
+from app.drafts_and_approvals.api import router as review_router
+from app.identity.api import router as auth_router
+from app.job_types import register_job_types
+from app.outreach_and_replies.api import router as outreach_router
 
 log = structlog.get_logger(__name__)
 
@@ -68,7 +72,18 @@ def create_app(*, configure_logs: bool = True) -> FastAPI:
         summary="Application-owned sales workflow. Shadow mode; live outreach is gated.",
         lifespan=lifespan,
     )
+    # The API enqueues jobs — `T-058b2b2a`'s candidate approval queues drafting — and `enqueue`
+    # resolves each job type's payload model from the registry to validate it. The worker calls
+    # this in `main()` too; without the same call here, any endpoint that enqueues raises
+    # `UnknownJobType` at runtime while every unit test of the same code path passes, because
+    # the test registered the type itself. Found by `T-154a`, whose approve endpoint could not
+    # work. Idempotent, so a process that is both API and worker is fine.
+    register_job_types()
+
     app.add_middleware(RequestContextMiddleware)
+    app.include_router(auth_router)
+    app.include_router(review_router)
+    app.include_router(outreach_router)
 
     @app.get("/healthz", response_model=Liveness, tags=["operations"])
     def healthz() -> Liveness:

@@ -15,11 +15,13 @@ __all__ = [
     "normalize_country",
     "normalize_domain",
     "normalize_email",
+    "normalize_person_name",
 ]
 
 _SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*://")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _COUNTRY = re.compile(r"^[A-Z]{2}$")
+_WHITESPACE = re.compile(r"\s+")
 
 
 class NormalizationError(ValueError):
@@ -65,6 +67,21 @@ def normalize_email(value: str) -> str:
     if not _EMAIL.match(cleaned):
         raise NormalizationError(f"{value!r} is not a usable email address")
     return cleaned
+
+
+def normalize_person_name(value: str) -> str:
+    """A comparison key for a person's name: lowercase, single-spaced, trimmed.
+
+    A **comparison** key only — the stored name keeps the operator's own spelling (§14.1), so this
+    is never written back. Deliberately conservative: case and runs of whitespace are the two
+    differences that mean nothing, and nothing else is touched. Stripping punctuation, reordering
+    "Last, First", or dropping middle names would each merge people who are not the same person,
+    and a merge is the identity operation that cannot be undone by hand (T-043, ADR-019).
+
+    Returns ``""`` for a blank name rather than raising: an empty key must never match another
+    empty key into a merge, and the caller checks for it.
+    """
+    return _WHITESPACE.sub(" ", value.strip()).lower()
 
 
 def normalize_country(value: str) -> str:

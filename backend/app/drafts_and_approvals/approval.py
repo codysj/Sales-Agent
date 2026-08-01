@@ -22,7 +22,9 @@ would be unused weight.
 """
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from sqlalchemy import (
     CheckConstraint,
@@ -371,50 +373,171 @@ def expire(
     )
 
 
-def invalidation_reason(
+class InvalidationTrigger(StrEnum):
+    """Which §8.4 condition stopped an approval authorizing a send.
+
+    §8.4 lists six changes that invalidate an approval — recipient, subject, body, material
+    personalization fact, product status, and claim version — plus the two lifecycle facts that
+    also stop one being usable: the approval's own state, and its expiry. The three pinned values
+    on the row cover all six of the §8.4 six, which is why there are fewer members here than that
+    list has entries: the content hash covers recipient, subject, body, and personalization
+    together, because any of them changing changes the hash.
+    """
+
+    NOT_APPROVED = "not_approved"
+    EXPIRED = "expired"
+    REVISION_MISSING = "revision_missing"
+    REVISION_RETIRED = "revision_retired"
+    CONTENT_CHANGED = "content_changed"
+    RECIPIENT_CHANGED = "recipient_changed"
+    PRODUCT_STATUS_SUPERSEDED = "product_status_superseded"
+    CLAIM_SET_SUPERSEDED = "claim_set_superseded"
+
+
+@dataclass(frozen=True, slots=True)
+class Invalidation:
+    """Why an approval no longer authorizes a send, and what made it so.
+
+    **The identifier is the point.** `invalidation_reason` answered in prose — "approved claim set
+    has been superseded" — which tells a reviewer the category of problem and nothing they can act
+    on. §7.5 asks the application to *flag* stale approvals, and a flag nobody can trace back to a
+    version is a flag that starts an investigation rather than ending one. `triggering_id` is the
+    row that changed: the claim set that was superseded, the product status version that stopped
+    being effective, the revision whose content moved.
+
+    `triggering_id` is `None` only where the trigger genuinely names no other row — an approval
+    that expired, or one whose own state is not `approved`. Those two are facts about the approval
+    itself, and `reason` already carries the timestamp or the state.
+    """
+
+    trigger: InvalidationTrigger
+    reason: str
+    #: The record whose change caused this. `None` for triggers that name no other row.
+    triggering_id: uuid.UUID | None = None
+
+
+def invalidation_detail(
     session: Session,
     approval: Approval,
     *,
     now: datetime | None = None,
-) -> str | None:
+) -> Invalidation | None:
     """Why this approval no longer authorizes a send, or ``None`` if it still does.
 
-    Checks every §8.4 trigger. The three pinned values cover all six: the content hash covers
-    recipient, subject, body, and personalization; the two version pins cover product status and
-    claim version.
+    Checks every §8.4 trigger. `invalidation_reason` is this function's prose form and is kept so
+    no existing caller changes — the dispatch path (§11.4) wants a sentence to raise with, and the
+    dashboard wants an identifier to link to.
     """
     moment = now or datetime.now(UTC)
 
     if approval.state is not ApprovalState.APPROVED:
-        return f"approval is {approval.state.value}, not approved"
+        return Invalidation(
+            trigger=InvalidationTrigger.NOT_APPROVED,
+            reason=f"approval is {approval.state.value}, not approved",
+        )
     if moment >= approval.approval_expires_at:
-        return f"approval expired at {approval.approval_expires_at.isoformat()}"
+        return Invalidation(
+            trigger=InvalidationTrigger.EXPIRED,
+            reason=f"approval expired at {approval.approval_expires_at.isoformat()}",
+        )
 
     revision = session.get(MessageRevision, approval.message_revision_id)
     if revision is None:
-        return "the approved revision no longer exists"
+        return Invalidation(
+            trigger=InvalidationTrigger.REVISION_MISSING,
+            reason="the approved revision no longer exists",
+            triggering_id=approval.message_revision_id,
+        )
     if revision.state in RETIRED_STATES:
-        return f"the approved revision is {revision.state.value}"
+        return Invalidation(
+            trigger=InvalidationTrigger.REVISION_RETIRED,
+            reason=f"the approved revision is {revision.state.value}",
+            triggering_id=revision.id,
+        )
     if revision.content_hash != approval.approved_content_hash:
-        return "message content changed since approval"
+        return Invalidation(
+            trigger=InvalidationTrigger.CONTENT_CHANGED,
+            reason="message content changed since approval",
+            triggering_id=revision.id,
+        )
     if revision.recipient_contact_point_id != approval.recipient_contact_point_id:
-        return "recipient changed since approval"
+        return Invalidation(
+            trigger=InvalidationTrigger.RECIPIENT_CHANGED,
+            reason="recipient changed since approval",
+            triggering_id=revision.recipient_contact_point_id,
+        )
 
     if approval.product_status_version_id is not None:
         from app.products_and_claims.models import ProductStatusVersion
 
         pinned = session.get(ProductStatusVersion, approval.product_status_version_id)
         if pinned is None or not pinned.is_effective_at(moment):
-            return "product status version is no longer effective"
+            return Invalidation(
+                trigger=InvalidationTrigger.PRODUCT_STATUS_SUPERSEDED,
+                reason="product status version is no longer effective",
+                triggering_id=approval.product_status_version_id,
+            )
 
     if approval.approved_claim_set_id is not None:
         from app.products_and_claims.claim_models import ApprovedClaimSet
 
         claim_set = session.get(ApprovedClaimSet, approval.approved_claim_set_id)
         if claim_set is None or claim_set.superseded_at is not None:
-            return "approved claim set has been superseded"
+            return Invalidation(
+                trigger=InvalidationTrigger.CLAIM_SET_SUPERSEDED,
+                reason="approved claim set has been superseded",
+                triggering_id=approval.approved_claim_set_id,
+            )
 
     return None
+
+
+def invalidation_reason(
+    session: Session,
+    approval: Approval,
+    *,
+    now: datetime | None = None,
+) -> str | None:
+    """The prose form of :func:`invalidation_detail`, or ``None``.
+
+    Kept as the shape the dispatch path already raises with (§11.4). Deriving it rather than
+    duplicating the checks is the point: two implementations of "is this approval still good"
+    would eventually disagree, and the one that drifts is the one fewer callers exercise.
+    """
+    detail = invalidation_detail(session, approval, now=now)
+    return detail.reason if detail is not None else None
+
+
+def approvals_needing_attention(
+    session: Session,
+    *,
+    campaign_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> list[tuple[Approval, Invalidation]]:
+    """Every approval that no longer authorizes a send, with why (§7.5).
+
+    Scans approvals in `approved` only. An already-revoked or rejected approval is not an
+    *attention item* — somebody has dealt with it — and listing them would bury the ones nobody
+    has looked at. The expiry case is included, which is why the scan cannot be a state filter
+    alone: an approval sitting in `approved` past its expiry is exactly the stale one §7.5 asks
+    the application to flag.
+    """
+    moment = now or datetime.now(UTC)
+    query = select(Approval).where(Approval.state == ApprovalState.APPROVED)
+    if campaign_id is not None:
+        query = (
+            query.join(MessageRevision, MessageRevision.id == Approval.message_revision_id)
+            .join(MessageDraft, MessageDraft.id == MessageRevision.draft_id)
+            .join(CampaignCandidate, CampaignCandidate.id == MessageDraft.candidate_id)
+            .where(CampaignCandidate.campaign_id == campaign_id)
+        )
+
+    found: list[tuple[Approval, Invalidation]] = []
+    for approval in session.execute(query.order_by(Approval.created_at.asc())).scalars().all():
+        detail = invalidation_detail(session, approval, now=moment)
+        if detail is not None:
+            found.append((approval, detail))
+    return found
 
 
 def is_valid(session: Session, approval: Approval, *, now: datetime | None = None) -> bool:

@@ -30,9 +30,9 @@ from app.jobs_and_outbox.retry import (
     compute_backoff,
 )
 from app.jobs_and_outbox.runner import execute
+from tests.factories import NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 
 #: A policy with jitter off, so tests that are about *progression* are not also about randomness.
 STEADY = RetryPolicy(

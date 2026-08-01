@@ -18,6 +18,7 @@ from app.drafts_and_approvals.approval import Approval, require_valid
 from app.outreach_and_replies.models import (
     ActionType,
     OutreachThread,
+    SendAttempt,
     SendCommand,
     build_idempotency_key,
 )
@@ -154,3 +155,22 @@ def create_send_command(
         correlation_id=correlation_id,
     )
     return command
+
+
+def revision_already_sent(session: Session, message_revision_id: uuid.UUID) -> bool:
+    """Whether a delivery was attempted for this revision (T-056).
+
+    Supplied to `drafts_and_approvals.invalidation` as its `AlreadySentCheck`, because §18.2
+    forbids that package importing this one. An *attempt* rather than a successful delivery is
+    the right test: an ambiguous result is `delivery_unknown` (§17.3), and a message that may
+    have arrived must not be treated as one that never left.
+    """
+    return (
+        session.execute(
+            select(SendAttempt.id)
+            .join(SendCommand, SendCommand.id == SendAttempt.send_command_id)
+            .where(SendCommand.message_revision_id == message_revision_id)
+            .limit(1)
+        ).first()
+        is not None
+    )

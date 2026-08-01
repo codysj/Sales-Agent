@@ -1,0 +1,5 @@
+{
+  "fixture_id": "SYNTHETIC-OUT-refusal",
+  "match": "SYNTHETIC-MATCH-refusal",
+  "failure_mode": "refusal"
+}

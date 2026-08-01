@@ -1,0 +1,5 @@
+{
+  "fixture_id": "SYNTHETIC-OUT-timeout",
+  "match": "SYNTHETIC-MATCH-timeout",
+  "failure_mode": "timeout"
+}

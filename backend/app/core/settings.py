@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     outbound_email_enabled: bool = False
     model_provider: ModelProvider = ModelProvider.FAKE
 
+    # The second lock on real-provider use (T-050). Selecting a provider is not enough: the
+    # registry also requires this flag, so adding a `ModelProvider` member can never on its own
+    # make a real client constructible. Only gate **G-03** with `Q-012` answered may flip it.
+    allow_real_model_provider: bool = False
+
     # Blank by default, and blank means *reject every webhook*, not "skip the check" (§19.4).
     # No provider secret is committed anywhere: `Q-004` has chosen no provider, and the tests
     # generate their own secret per run.

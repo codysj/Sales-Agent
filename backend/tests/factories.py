@@ -12,7 +12,7 @@ Extracted from `test_outreach.py` when `T-035c` needed the same chain.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -38,8 +38,19 @@ from app.prospects.models import (
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 APPROVER = "approver-1"
 
-#: A fixed moment, so approval expiry and suppression windows are deterministic.
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
+#: One moment, shared by every test module, fixed for the whole run so approval expiry and
+#: suppression windows are deterministic — but **anchored to the run, not written down** (T-142).
+#:
+#: A literal date expires. `Approval` carries `CHECK (approval_expires_at > created_at)` and
+#: `created_at` comes from the server clock, so an approval built at a hard-coded `NOW` with the
+#: 72-hour default TTL becomes un-insertable the moment real time passes `NOW + 72h`. That is
+#: not a slow drift: 89 tests went from green to red between two runs on the same day, with no
+#: code change between them.
+#:
+#: Truncated to the hour and pushed a day back so it is always comfortably in the past (rows may
+#: be dated before it) while `NOW + DEFAULT_APPROVAL_TTL` stays comfortably in the future.
+#: `tests/test_fixture_clock.py` asserts both margins, so this cannot rot back into a literal.
+NOW = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) - timedelta(days=1)
 
 
 def synthetic_slug(prefix: str = "synthetic") -> str:

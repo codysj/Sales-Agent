@@ -1,0 +1,7 @@
+{personalization}
+
+{claims}
+
+SYNTHETIC-BOILERPLATE: this message was generated in shadow mode against synthetic fixtures and
+has been sent to nobody. Reply handling and opt-out wording are added by the email-readiness work
+once `Q-004` names a mailbox and gate G-07 opens.

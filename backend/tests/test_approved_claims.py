@@ -8,7 +8,7 @@ Every claim here is synthetic. Real approved claims stay `Q-017`.
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -31,8 +31,8 @@ from app.products_and_claims.claims import (
     valid_claims_for_campaign,
 )
 from app.products_and_claims.models import Product
+from tests.factories import NOW
 
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 EARLIER = NOW - timedelta(days=30)
 LATER = NOW + timedelta(days=30)
 

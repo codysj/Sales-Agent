@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "description": "One drafting result: what to say about the prospect, and which claims apply.",
+  "properties": {
+    "approved_claim_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Approved Claim Ids",
+      "type": "array"
+    },
+    "evidence_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "personalization": {
+      "maxLength": 800,
+      "minLength": 1,
+      "title": "Personalization",
+      "type": "string"
+    },
+    "subject": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Subject",
+      "type": "string"
+    }
+  },
+  "required": [
+    "subject",
+    "personalization",
+    "approved_claim_ids",
+    "evidence_ids"
+  ],
+  "title": "DraftOutput",
+  "type": "object"
+}

@@ -411,7 +411,11 @@ def test_suppression_has_no_lifecycle_to_be_transitioned_out_of() -> None:
 #: Which package owns each lifecycle's transitions. A module that cannot *name* another lifecycle's
 #: states cannot move them, which is a stronger guarantee than reviewing call sites.
 LIFECYCLE_OWNERS: dict[str, frozenset[str]] = {
-    "CampaignCandidateState": frozenset({"campaigns", "core"}),
+    # `qualification` is an owner, not a reader: §8.3 step 4 makes hard eligibility the thing that
+    # moves a candidate out of `imported`, so `T-045` transitions it rather than merely consulting
+    # it. The guarantee this map exists for is untouched — the check is that no function spans two
+    # lifecycles, and `test_eligibility.py` pins that eligibility names exactly this one.
+    "CampaignCandidateState": frozenset({"campaigns", "qualification", "core"}),
     "MessageRevisionState": frozenset({"drafts_and_approvals", "core"}),
     "ApprovalState": frozenset({"drafts_and_approvals", "core"}),
     "OutreachThreadState": frozenset({"outreach_and_replies", "core"}),
@@ -428,7 +432,10 @@ LIFECYCLE_OWNERS: dict[str, frozenset[str]] = {
 #: `test_a_reader_never_transitions_what_it_reads` holds them to reading only.
 LIFECYCLE_READERS: dict[str, frozenset[str]] = {
     # T-140: approval refuses a rejected/deferred/invalidated candidate (§8.2).
-    "CampaignCandidateState": frozenset({"drafts_and_approvals"}),
+    # T-046: evidence capture refuses a candidate that has not passed the eligibility gate, because
+    # §8.3 puts step 4 before steps 5-6. It consults the state and never moves it — the compensating
+    # check below holds it to that.
+    "CampaignCandidateState": frozenset({"drafts_and_approvals", "research_and_evidence"}),
 }
 
 

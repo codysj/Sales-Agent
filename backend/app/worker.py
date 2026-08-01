@@ -9,6 +9,14 @@ here rather than in `jobs_and_outbox`, because it needs the §11.4 precondition 
 `outreach_and_replies`, which §18.2 forbids `jobs_and_outbox` from importing. This file is a leaf
 that nothing imports, so it is the one place allowed to know about both halves.
 
+**It also owns job-type registration**, for the same reason it owns the composition: the
+registry is process-wide and empty at import, and every domain module that defines a job type
+has to be told to put it there. A worker that skipped this would lease jobs it had no handler
+for, retry each on a fixed backoff, and look busy while completing nothing — which is exactly
+what it did until `T-148`. `register_job_types` is the list, `tests/test_jobs.py` proves the
+list is complete by discovery rather than by inspection, and adding a job type without adding it
+here fails that test.
+
 Everything except `main` is free of processes, signals, and sleeps, so a whole cycle is testable.
 """
 
@@ -27,6 +35,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import configure_logging
 from app.core.settings import Settings, get_settings
 from app.db.session import dispose_engines, get_engine
+from app.job_types import register_job_types
 from app.jobs_and_outbox.dispatch import ExternalEffectAdapter, dispatch_once
 from app.jobs_and_outbox.recovery import (
     reclaim_expired_dispatch_leases,
@@ -37,6 +46,14 @@ from app.outreach_and_replies.adapters import build_effect_adapter
 from app.outreach_and_replies.preconditions import send_precondition_check
 
 log = structlog.get_logger(__name__)
+
+#: Every module that defines a job type. Ordered by §8.3 step so the list reads like the pipeline
+#: it wires, though registration order carries no meaning — the registry refuses duplicate names
+#: and each `register()` is idempotent.
+#:
+#: `tests/test_jobs.py::test_the_worker_registers_every_job_type_the_codebase_defines` discovers
+#: the same set by AST and compares, so a module added without a line here fails rather than
+#: silently never running.
 
 #: How long to wait when the queue is empty. PostgreSQL is the queue (ADR-003), so this is a
 #: poll rather than a push; a few seconds is well inside pilot latency needs and costs nothing.
@@ -121,6 +138,7 @@ def one_pass(
 def main() -> None:
     settings = get_settings()
     configure_logging(settings.app_env, level=logging.INFO)
+    register_job_types()
 
     worker_id = (
         f"{os.uname().nodename if hasattr(os, 'uname') else 'worker'}-{uuid.uuid4().hex[:8]}"

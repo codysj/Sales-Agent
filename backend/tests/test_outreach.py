@@ -8,7 +8,6 @@ Nothing here sends anything — these are the records a send is made from.
 """
 
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -45,9 +44,9 @@ from app.outreach_and_replies.models import (
 )
 from app.products_and_claims.models import Product
 from app.prospects.models import Account, Contact, ContactPoint, ContactPointType
+from tests.factories import NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)

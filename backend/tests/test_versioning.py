@@ -6,7 +6,7 @@ version is ever in force for a key at a given instant.
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -27,8 +27,8 @@ from app.audit_and_operations.versioning import (
     require_effective_version,
 )
 from app.core.settings import ModelProvider
+from tests.factories import NOW
 
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 EARLIER = NOW - timedelta(days=30)
 LATER = NOW + timedelta(days=30)
 APP = Path(__file__).resolve().parents[1] / "app"

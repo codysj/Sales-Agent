@@ -1,0 +1,19 @@
+{
+  "document_id": "SYNTHETIC-DOC-alpha-microgrid",
+  "account_domain": "alpha.example.com",
+  "source_type": "synthetic_fixture",
+  "source_quality": "medium",
+  "retention_class": "public_unrestricted",
+  "contains_personal_or_confidential_data": false,
+  "text": "SYNTHETIC EXAMPLE DOCUMENT. SYNTHETIC-Account-Alpha operates a placeholder industrial site described for development purposes only. The site is said to be evaluating stationary storage for resilience. Nothing in this document describes a real organization, a real project, or a real decision.",
+  "facts": [
+    {
+      "excerpt": "SYNTHETIC: the account is described as evaluating stationary storage for site resilience.",
+      "field_or_span": "summary"
+    },
+    {
+      "excerpt": "SYNTHETIC: the account is described as operating a single industrial site.",
+      "field_or_span": "operations"
+    }
+  ]
+}

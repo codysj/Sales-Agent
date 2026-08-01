@@ -9,7 +9,7 @@ real volumes `Q-014`.
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -25,8 +25,7 @@ from app.campaigns.service import (
     require_current_policy,
 )
 from app.products_and_claims.models import Product, ReadinessCategory
-
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
+from tests.factories import NOW
 
 
 @pytest.fixture

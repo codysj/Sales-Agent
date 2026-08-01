@@ -22,11 +22,24 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings
+from tests.netguard import guarded, permitted_addresses
 
 BACKEND = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = BACKEND / "alembic.ini"
 
 SKIP_REASON = "PostgreSQL is not reachable — start it with `docker compose up -d db`"
+
+
+@pytest.fixture
+def no_network(database_url: str) -> Iterator[None]:
+    """Fail the test if anything opens a socket to any address but the test database.
+
+    The guard itself lives in `tests/netguard.py` so its exception has one class identity:
+    pytest imports this file as top-level `conftest`, so a test importing `tests.conftest`
+    would otherwise catch a different `NetworkUsed` than the fixture raises.
+    """
+    with guarded(permitted_addresses(database_url)):
+        yield
 
 
 def render_url(url: URL) -> str:

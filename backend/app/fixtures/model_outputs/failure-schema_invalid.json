@@ -1,0 +1,5 @@
+{
+  "fixture_id": "SYNTHETIC-OUT-schema_invalid",
+  "match": "SYNTHETIC-MATCH-schema_invalid",
+  "failure_mode": "schema_invalid"
+}

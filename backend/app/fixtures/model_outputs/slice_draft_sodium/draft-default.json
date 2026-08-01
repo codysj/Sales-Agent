@@ -1,0 +1,14 @@
+{
+  "fixture_id": "SYNTHETIC-OUT-slice-draft-sodium-default",
+  "match": "default",
+  "output": {
+    "subject": "SYNTHETIC subject — stationary storage evaluation",
+    "personalization": "SYNTHETIC: the account is described in a public announcement as evaluating stationary storage for site resilience.",
+    "approved_claim_ids": [
+      "SYNTHETIC-CLAIM-sodium-readiness"
+    ],
+    "evidence_ids": []
+  },
+  "input_tokens": 140,
+  "output_tokens": 60
+}

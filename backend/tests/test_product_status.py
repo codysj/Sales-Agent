@@ -9,7 +9,7 @@ or MOU figure may appear in a fixture until `Q-021`/`Q-022` deliver approved bri
 """
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -27,8 +27,8 @@ from app.products_and_claims.status import (
     next_version_number,
     require_effective_status,
 )
+from tests.factories import NOW
 
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 EARLIER = NOW - timedelta(days=30)
 LATER = NOW + timedelta(days=30)
 

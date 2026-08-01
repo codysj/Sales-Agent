@@ -9,9 +9,10 @@ lease becomes visible — there is no window where a job looks free but is not.
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Final
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.audit_and_operations.service import Actor, current_correlation_id, record_audit_event
@@ -98,6 +99,41 @@ def enqueue(
         correlation_id=resolved_correlation,
     )
     return job
+
+
+#: Job states that mean work is still coming for a job that already exists. `LEASED` is the one
+#: worth naming: it is precisely the state a job is in while a caller waits and asks again, so a
+#: check that counted only `QUEUED` would start a second copy exactly when it is least wanted.
+IN_FLIGHT_STATES: Final = (JobState.QUEUED, JobState.LEASED, JobState.RETRY)
+
+
+def in_flight_for(
+    session: Session,
+    *,
+    job_type: str,
+    payload_key: str,
+    payload_value: str,
+) -> int:
+    """How many jobs of ``job_type`` are still coming for this payload value.
+
+    Lives here rather than in the domain module that asks the question: "is this job still in
+    flight" is about the queue, and `tests/test_invariants.py` refuses any package outside
+    `core` and `jobs_and_outbox` to name `JobState` at all — which is the invariant that found
+    this function's first home wrong (`T-153`).
+
+    Matched on one payload field rather than the whole payload: two requests for the same
+    candidate differ in fields nobody is deduplicating on, and comparing whole payloads would
+    make the check pass for exactly the duplicates it exists to catch.
+    """
+    return session.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            Job.job_type == job_type,
+            Job.state.in_(IN_FLIGHT_STATES),
+            Job.payload[payload_key].astext == payload_value,
+        )
+    ).scalar_one()
 
 
 def lease_jobs(

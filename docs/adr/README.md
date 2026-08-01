@@ -41,6 +41,11 @@ leaves discretion. They live in this directory as `ADR-0NN-short-slug.md`.
 | ADR | Status | Decision |
 |---|---|---|
 | [ADR-018](ADR-018-toolchain-defaults.md) | ACCEPTED | Python 3.12 + uv + ruff + mypy(strict) + pytest, `backend/`/`frontend/` layout, no build backend. |
+| [ADR-019](ADR-019-no-role-based-contact-matching.md) | ACCEPTED | Dedup matches on exact email or account+normalized name only; role-title matching and fuzzy scoring rejected. |
+| [ADR-020](ADR-020-the-lifecycle-owner-brackets-a-step-it-does-not-perform.md) | ACCEPTED | `campaigns` brackets the research step with its own job types; `research_and_evidence` stays a lifecycle reader and is not added to the owner map. |
+| [ADR-021](ADR-021-frontend-toolchain-defaults.md) | ACCEPTED (amended) | Frontend: npm + committed lockfile, Next.js 16 App Router, TypeScript 5.9 beyond `strict`, type-aware ESLint, Vitest; no styling until a screen needs it. Amended 2026-07-31: TS 5, not 6, because `openapi-typescript` requires it. |
+
+| [ADR-022](ADR-022-requesting-more-research-adds-evidence-without-moving-the-candidate.md) | ACCEPTED | Requesting more research captures evidence for a candidate that stays in `review_pending`; adding a `review_pending → research_pending` edge to §8.2 rejected. |
 
 ## Writing a local ADR
 

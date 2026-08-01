@@ -6,7 +6,7 @@ rules that an approval names one immutable revision and that a closed approval n
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 import structlog
@@ -42,9 +42,9 @@ from app.products_and_claims.models import (
     ReadinessCategory,
 )
 from app.prospects.models import Account, Contact, ContactPoint, ContactPointType
+from tests.factories import NOW
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 LATER = NOW + timedelta(days=30)
 
 

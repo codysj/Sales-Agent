@@ -5,7 +5,7 @@ excerpts are excerpts rather than documents, and stale evidence never comes back
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 import structlog
@@ -34,8 +34,8 @@ from app.research_and_evidence.models import (
     SourceQuality,
     SourceType,
 )
+from tests.factories import NOW
 
-NOW = datetime(2026, 7, 27, 12, 0, tzinfo=UTC)
 EARLIER = NOW - timedelta(days=30)
 LATER = NOW + timedelta(days=30)
 HASH = content_hash("SYNTHETIC source content")

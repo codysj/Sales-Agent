@@ -9,6 +9,7 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -210,5 +211,52 @@ def supersede(
         MessageRevisionState.SUPERSEDED,
         actor=actor,
         reason=reason,
+        correlation_id=correlation_id,
+    )
+
+
+#: The only revision state an approval may be granted from. §8.2 offers `review_pending ->
+#: approved` and no other edge into `approved`, and approving a revision nobody reviewed would
+#: skip §8.3 step 8 entirely.
+APPROVABLE_STATE: Final = MessageRevisionState.REVIEW_PENDING
+
+
+class RevisionNotApprovable(RevisionError):
+    """This revision is not in a state an approval may be granted from."""
+
+
+def require_approvable(revision: MessageRevision) -> None:
+    """Raise unless ``revision`` may be approved. Reads only; writes nothing.
+
+    Separate from `mark_approved` because the caller needs to refuse *before* it writes anything
+    (§11.3's transaction is all-or-nothing), and because a caller outside this package must not
+    name `MessageRevisionState` at all — `tests/test_invariants.py` enforces that, and it is what
+    sent this pair here rather than leaving it in the approval transaction.
+    """
+    if revision.state is not APPROVABLE_STATE:
+        raise RevisionNotApprovable(
+            f"revision {revision.id} is {revision.state.value}; §8.2 offers "
+            f"`review_pending -> approved` and no other edge into approval"
+        )
+
+
+def mark_approved(
+    session: Session,
+    revision: MessageRevision,
+    *,
+    actor: Actor,
+    correlation_id: str | None = None,
+) -> MessageRevision:
+    """Move ``revision`` to `approved`. Adds to ``session`` without committing.
+
+    The approval *record* is `approval.py`'s; this is the revision's own state, and without it an
+    `Approval` row would read `approved` while the revision it names still read `review_pending`.
+    """
+    require_approvable(revision)
+    return transition(
+        session,
+        revision,
+        MessageRevisionState.APPROVED,
+        actor=actor,
         correlation_id=correlation_id,
     )

@@ -31,17 +31,23 @@ def _load_all_models() -> None:
     from app.audit_and_operations import models as _audit_models  # noqa: F401
     from app.audit_and_operations import versioning as _versioning_models  # noqa: F401
     from app.campaigns import candidate as _candidate_models  # noqa: F401
+    from app.campaigns import decisions as _decision_models  # noqa: F401
     from app.campaigns import models as _campaign_models  # noqa: F401
     from app.drafts_and_approvals import approval as _approval_models  # noqa: F401
     from app.drafts_and_approvals import models as _draft_models  # noqa: F401
+    from app.identity import models as _identity_models  # noqa: F401
+    from app.identity import sessions as _session_models  # noqa: F401
     from app.jobs_and_outbox import models as _job_models  # noqa: F401
     from app.jobs_and_outbox import outbox as _outbox_models  # noqa: F401
+    from app.model_gateway import models as _model_run_models  # noqa: F401
     from app.outreach_and_replies import models as _outreach_models  # noqa: F401
     from app.outreach_and_replies import webhooks as _webhook_models  # noqa: F401
     from app.products_and_claims import claim_models as _claim_models  # noqa: F401
     from app.products_and_claims import models as _product_models  # noqa: F401
+    from app.prospects import imports as _import_models  # noqa: F401
     from app.prospects import models as _prospect_models  # noqa: F401
     from app.prospects import suppression as _suppression_models  # noqa: F401
+    from app.qualification import models as _qualification_models  # noqa: F401
     from app.research_and_evidence import models as _evidence_models  # noqa: F401
 
 

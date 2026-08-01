@@ -1,0 +1,2757 @@
+{
+  "components": {
+    "schemas": {
+      "ApproveMessageRequest": {
+        "additionalProperties": false,
+        "description": "What the approver confirms (\u00a711.3 steps 1-2).",
+        "properties": {
+          "recipient_contact_point_id": {
+            "format": "uuid",
+            "title": "Recipient Contact Point Id",
+            "type": "string"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          }
+        },
+        "required": [
+          "recipient_contact_point_id"
+        ],
+        "title": "ApproveMessageRequest",
+        "type": "object"
+      },
+      "ApproveMessageResponse": {
+        "description": "What was approved, and what it produced.",
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "message_revision_id": {
+            "format": "uuid",
+            "title": "Message Revision Id",
+            "type": "string"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "revision_state": {
+            "title": "Revision State",
+            "type": "string"
+          },
+          "send_command_id": {
+            "format": "uuid",
+            "title": "Send Command Id",
+            "type": "string"
+          },
+          "what_happens_next": {
+            "title": "What Happens Next",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "message_revision_id",
+          "send_command_id",
+          "recipient",
+          "revision_state",
+          "what_happens_next",
+          "record_version"
+        ],
+        "title": "ApproveMessageResponse",
+        "type": "object"
+      },
+      "ApproveRequest": {
+        "additionalProperties": false,
+        "description": "Which address this candidate is approved for (ADR-008).",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recipient_contact_point_id": {
+            "format": "uuid",
+            "title": "Recipient Contact Point Id",
+            "type": "string"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          }
+        },
+        "required": [
+          "recipient_contact_point_id"
+        ],
+        "title": "ApproveRequest",
+        "type": "object"
+      },
+      "ApproveResponse": {
+        "description": "What was approved, in the terms the approver chose it.",
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          },
+          "recipient_contact_point_id": {
+            "format": "uuid",
+            "title": "Recipient Contact Point Id",
+            "type": "string"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CampaignCandidateState"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "recipient_contact_point_id",
+          "recipient",
+          "state",
+          "record_version"
+        ],
+        "title": "ApproveResponse",
+        "type": "object"
+      },
+      "AttentionPage": {
+        "description": "Approvals needing attention, oldest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionRow"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttentionPage",
+        "type": "object"
+      },
+      "AttentionRow": {
+        "description": "One approval that no longer authorizes a send (\u00a77.5, \u00a78.4).",
+        "properties": {
+          "approval_expires_at": {
+            "format": "date-time",
+            "title": "Approval Expires At",
+            "type": "string"
+          },
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "approver_id": {
+            "title": "Approver Id",
+            "type": "string"
+          },
+          "message_revision_id": {
+            "format": "uuid",
+            "title": "Message Revision Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "recipient_contact_point_id": {
+            "format": "uuid",
+            "title": "Recipient Contact Point Id",
+            "type": "string"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/InvalidationTrigger"
+          },
+          "triggering_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggering Id"
+          }
+        },
+        "required": [
+          "approval_id",
+          "message_revision_id",
+          "recipient_contact_point_id",
+          "approver_id",
+          "approval_expires_at",
+          "trigger",
+          "reason",
+          "triggering_id",
+          "record_version"
+        ],
+        "title": "AttentionRow",
+        "type": "object"
+      },
+      "CampaignCandidateState": {
+        "description": "\u00a78.2: imported -> eligible/ineligible -> research_pending -> researched ->\nreview_pending -> approved/rejected/deferred/invalidated.",
+        "enum": [
+          "imported",
+          "eligible",
+          "ineligible",
+          "research_pending",
+          "researched",
+          "review_pending",
+          "approved",
+          "rejected",
+          "deferred",
+          "invalidated"
+        ],
+        "title": "CampaignCandidateState",
+        "type": "string"
+      },
+      "CandidateDetail": {
+        "description": "\u00a712.3 items 1-5, and deliberately not 6 or 7.\n\nItems 6 and 7 \u2014 the actions and the structured correction reason \u2014 are things a reviewer\n*does*, and this endpoint returns nothing that does anything. Approving, rejecting,\ndeferring, editing, and requesting more research are `T-065` onwards; a read endpoint that\nshipped an action list would be describing authority it does not enforce.",
+        "properties": {
+          "account_domain": {
+            "title": "Account Domain",
+            "type": "string"
+          },
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "approved_claims": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimRow"
+            },
+            "title": "Approved Claims",
+            "type": "array"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "campaign_name": {
+            "title": "Campaign Name",
+            "type": "string"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "contact_points": {
+            "items": {
+              "$ref": "#/components/schemas/ContactPointRow"
+            },
+            "title": "Contact Points",
+            "type": "array"
+          },
+          "contact_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Role"
+          },
+          "crm_relationship": {
+            "title": "Crm Relationship",
+            "type": "null"
+          },
+          "current_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RevisionDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRow"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "opportunity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Type"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "product_readiness": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadinessCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product_readiness_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Readiness Summary"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CampaignCandidateState"
+          },
+          "suppression": {
+            "$ref": "#/components/schemas/SuppressionWarning"
+          },
+          "what_happens_next": {
+            "title": "What Happens Next",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "campaign_id",
+          "campaign_name",
+          "account_name",
+          "account_domain",
+          "contact_name",
+          "contact_role",
+          "contact_points",
+          "state",
+          "opportunity_type",
+          "evidence",
+          "product_name",
+          "product_readiness",
+          "product_readiness_summary",
+          "approved_claims",
+          "suppression",
+          "current_revision",
+          "what_happens_next",
+          "record_version"
+        ],
+        "title": "CandidateDetail",
+        "type": "object"
+      },
+      "CandidatePage": {
+        "description": "One page, and enough to ask for the next without guessing.",
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CandidatePage",
+        "type": "object"
+      },
+      "CandidateRow": {
+        "description": "One queue entry: enough to choose what to open, not enough to decide.\n\n\u00a712.3's review card wants evidence, product status, claims, and the exact revision. None of\nthat is here on purpose \u2014 a list endpoint that returned everything a decision needs would\ninvite deciding from the list, and the card is `T-064`.",
+        "properties": {
+          "account_domain": {
+            "title": "Account Domain",
+            "type": "string"
+          },
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "campaign_name": {
+            "title": "Campaign Name",
+            "type": "string"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CampaignCandidateState"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "campaign_id",
+          "campaign_name",
+          "account_name",
+          "account_domain",
+          "contact_name",
+          "state",
+          "record_version"
+        ],
+        "title": "CandidateRow",
+        "type": "object"
+      },
+      "ClaimRow": {
+        "description": "One approved claim currently usable for this campaign (\u00a710.5).",
+        "properties": {
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "claim_key": {
+            "title": "Claim Key",
+            "type": "string"
+          },
+          "expires_or_review_by": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires Or Review By"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "claim_id",
+          "claim_key",
+          "version",
+          "text",
+          "expires_or_review_by"
+        ],
+        "title": "ClaimRow",
+        "type": "object"
+      },
+      "ContactPointRow": {
+        "description": "One address a candidate could be approved for (\u00a712.3 item 1, ADR-008).\n\nThe verification state is on the row rather than filtered on: an unverified address is shown\nand refused, not hidden. A reviewer who cannot see the mailbox they expected has no way to\ntell \"this address is unusable\" from \"the system does not know about it\", and those want\ndifferent actions.",
+        "properties": {
+          "approvable": {
+            "title": "Approvable",
+            "type": "boolean"
+          },
+          "contact_point_id": {
+            "format": "uuid",
+            "title": "Contact Point Id",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ContactPointType"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "verification_state": {
+            "$ref": "#/components/schemas/VerificationState"
+          }
+        },
+        "required": [
+          "contact_point_id",
+          "type",
+          "value",
+          "verification_state",
+          "approvable"
+        ],
+        "title": "ContactPointRow",
+        "type": "object"
+      },
+      "ContactPointType": {
+        "enum": [
+          "email",
+          "phone",
+          "linkedin_url"
+        ],
+        "title": "ContactPointType",
+        "type": "string"
+      },
+      "DecisionCategory": {
+        "description": "\u00a710.6's eleven categories, in the specification's order.\n\nThe order is kept so the list can be checked against \u00a710.6 by reading down it. The values are\nstable identifiers: a dashboard may relabel them, but a stored row means what it meant.",
+        "enum": [
+          "wrong_campaign",
+          "wrong_account_or_duplicate",
+          "poor_buyer_role",
+          "weak_or_stale_evidence",
+          "product_not_ready",
+          "unsupported_claim",
+          "personalization_not_useful",
+          "tone_or_positioning_problem",
+          "existing_relationship",
+          "compliance_or_suppression_concern",
+          "defer_until_date_or_event"
+        ],
+        "title": "DecisionCategory",
+        "type": "string"
+      },
+      "DecisionResponse": {
+        "description": "What was recorded, so the dashboard can show it back rather than assume it.",
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/DecisionCategory"
+          },
+          "decision_id": {
+            "format": "uuid",
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "defer_until_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defer Until Date"
+          },
+          "defer_until_event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defer Until Event"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CampaignCandidateState"
+          }
+        },
+        "required": [
+          "decision_id",
+          "candidate_id",
+          "kind",
+          "category",
+          "notes",
+          "defer_until_date",
+          "defer_until_event",
+          "state",
+          "record_version"
+        ],
+        "title": "DecisionResponse",
+        "type": "object"
+      },
+      "DeferRequest": {
+        "additionalProperties": false,
+        "description": "What this candidate is waiting for (\u00a710.6's eleventh category).",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/DecisionCategory",
+            "default": "defer_until_date_or_event"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          },
+          "until_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until Date"
+          },
+          "until_event": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until Event"
+          }
+        },
+        "title": "DeferRequest",
+        "type": "object"
+      },
+      "EditRequest": {
+        "additionalProperties": false,
+        "description": "What a reviewer changed, and why.\n\n``correction_reason`` is required with no default: \u00a712.3 item 7 asks for a structured reason,\nand an edit nobody can explain later is an edit nobody can review. Citations are optional and\n`None` means *unchanged* \u2014 silently dropping the claim a sentence rests on would fail\n`T-055`'s grounding check for a reason the reviewer never chose.",
+        "properties": {
+          "approved_claim_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Claim Ids"
+          },
+          "body": {
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "correction_reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Correction Reason",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Ids"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          },
+          "subject": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "body",
+          "correction_reason"
+        ],
+        "title": "EditRequest",
+        "type": "object"
+      },
+      "EditResponse": {
+        "description": "The new revision, and what the edit did to the old one.",
+        "properties": {
+          "expired_approvals": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Expired Approvals",
+            "type": "array"
+          },
+          "failed_checks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Checks",
+            "type": "array"
+          },
+          "is_valid": {
+            "title": "Is Valid",
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RevisionDetail"
+          },
+          "revoked_approvals": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Revoked Approvals",
+            "type": "array"
+          },
+          "superseded_revision_id": {
+            "format": "uuid",
+            "title": "Superseded Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "superseded_revision_id",
+          "revoked_approvals",
+          "expired_approvals",
+          "is_valid",
+          "failed_checks"
+        ],
+        "title": "EditResponse",
+        "type": "object"
+      },
+      "EvidenceRow": {
+        "description": "One stored fact, with the provenance \u00a714.3 requires a reviewer to see.",
+        "properties": {
+          "contains_personal_or_confidential_data": {
+            "title": "Contains Personal Or Confidential Data",
+            "type": "boolean"
+          },
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "expires_or_refresh_by": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires Or Refresh By"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "source_quality": {
+            "$ref": "#/components/schemas/SourceQuality"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "excerpt",
+          "source_type",
+          "source_quality",
+          "retrieved_at",
+          "expires_or_refresh_by",
+          "contains_personal_or_confidential_data"
+        ],
+        "title": "EvidenceRow",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InvalidationTrigger": {
+        "description": "Which \u00a78.4 condition stopped an approval authorizing a send.\n\n\u00a78.4 lists six changes that invalidate an approval \u2014 recipient, subject, body, material\npersonalization fact, product status, and claim version \u2014 plus the two lifecycle facts that\nalso stop one being usable: the approval's own state, and its expiry. The three pinned values\non the row cover all six of the \u00a78.4 six, which is why there are fewer members here than that\nlist has entries: the content hash covers recipient, subject, body, and personalization\ntogether, because any of them changing changes the hash.",
+        "enum": [
+          "not_approved",
+          "expired",
+          "revision_missing",
+          "revision_retired",
+          "content_changed",
+          "recipient_changed",
+          "product_status_superseded",
+          "claim_set_superseded"
+        ],
+        "title": "InvalidationTrigger",
+        "type": "string"
+      },
+      "Liveness": {
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Liveness",
+        "type": "object"
+      },
+      "MessageRevisionState": {
+        "description": "\u00a78.2: draft -> validation_failed/review_pending -> approved/superseded/invalidated.",
+        "enum": [
+          "draft",
+          "validation_failed",
+          "review_pending",
+          "approved",
+          "superseded",
+          "invalidated"
+        ],
+        "title": "MessageRevisionState",
+        "type": "string"
+      },
+      "Readiness": {
+        "properties": {
+          "database": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "shadow_mode": {
+            "title": "Shadow Mode",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "database",
+          "shadow_mode"
+        ],
+        "title": "Readiness",
+        "type": "object"
+      },
+      "ReadinessCategory": {
+        "description": "The five states \u00a72.3 requires the system to distinguish.\n\nA database enum, not free text: \"roughly available\" is exactly the ambiguity that produces a\npremature certification or availability claim.",
+        "enum": [
+          "sellable_now",
+          "evaluation_or_pilot",
+          "in_development",
+          "strategic_or_roadmap",
+          "paused_or_unavailable"
+        ],
+        "title": "ReadinessCategory",
+        "type": "string"
+      },
+      "RejectRequest": {
+        "additionalProperties": false,
+        "description": "Why this candidate is being rejected (\u00a710.6).",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/DecisionCategory"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          }
+        },
+        "required": [
+          "category"
+        ],
+        "title": "RejectRequest",
+        "type": "object"
+      },
+      "RequestResearchRequest": {
+        "additionalProperties": false,
+        "description": "Why more evidence is wanted (\u00a710.6, ADR-022).",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/DecisionCategory"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          }
+        },
+        "required": [
+          "category"
+        ],
+        "title": "RequestResearchRequest",
+        "type": "object"
+      },
+      "RevisionDetail": {
+        "description": "The exact revision a reviewer would act on (\u00a712.3 item 5).\n\nThe full body, unlike the queue row \u2014 this *is* the place a reviewer reads the message, and\napproving without seeing exactly what will be sent is the failure ADR-008 exists to prevent.",
+        "properties": {
+          "approved_claim_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Approved Claim Ids",
+            "type": "array"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MessageRevisionState"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision_id",
+          "revision_number",
+          "subject",
+          "body",
+          "state",
+          "approved_claim_ids",
+          "evidence_ids",
+          "content_hash",
+          "record_version"
+        ],
+        "title": "RevisionDetail",
+        "type": "object"
+      },
+      "RevisionPage": {
+        "description": "One page of the revision queue.",
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "RevisionPage",
+        "type": "object"
+      },
+      "RevisionRow": {
+        "description": "One revision waiting on a reviewer.\n\nCarries the subject but **not** the body: a queue is for choosing what to open, and a list\nthat showed the whole message would invite approving from the list. The body, its evidence,\nand its claims are the review card's (`T-064`).",
+        "properties": {
+          "backlog_age_hours": {
+            "title": "Backlog Age Hours",
+            "type": "integer"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "campaign_name": {
+            "title": "Campaign Name",
+            "type": "string"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "opportunity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Type"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MessageRevisionState"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision_id",
+          "candidate_id",
+          "campaign_id",
+          "campaign_name",
+          "revision_number",
+          "subject",
+          "state",
+          "opportunity_type",
+          "backlog_age_hours",
+          "record_version"
+        ],
+        "title": "RevisionRow",
+        "type": "object"
+      },
+      "RevokeApprovalRequest": {
+        "additionalProperties": false,
+        "description": "Why this approval is being revoked.",
+        "properties": {
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RevokeApprovalRequest",
+        "type": "object"
+      },
+      "RevokeApprovalResponse": {
+        "description": "What the revocation did.",
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "state",
+          "reason",
+          "record_version"
+        ],
+        "title": "RevokeApprovalResponse",
+        "type": "object"
+      },
+      "SessionResponse": {
+        "description": "The current session. `token` is present only on the response that created it.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "issued_via": {
+            "title": "Issued Via",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "roles",
+          "expires_at",
+          "issued_via"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
+      "SourceQuality": {
+        "description": "\u00a79.5 / \u00a710.4 source-quality classification.",
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ],
+        "title": "SourceQuality",
+        "type": "string"
+      },
+      "SourceType": {
+        "description": "Where evidence came from (\u00a79.2).\n\n``LINKEDIN_HUMAN_PROVIDED`` is the only LinkedIn value and says what it means: a human\nsupplied the URL or export. Autonomous LinkedIn operation is rejected (ADR-005).",
+        "enum": [
+          "company_website",
+          "industry_directory",
+          "trade_show_listing",
+          "public_announcement",
+          "procurement_record",
+          "data_provider",
+          "crm_record",
+          "linkedin_human_provided",
+          "manual_entry",
+          "synthetic_fixture"
+        ],
+        "title": "SourceType",
+        "type": "string"
+      },
+      "StubSignInRequest": {
+        "additionalProperties": false,
+        "description": "Who to sign in. There is no password field, and that is `\u00a712.2` rather than an omission.",
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "StubSignInRequest",
+        "type": "object"
+      },
+      "SuppressionWarning": {
+        "description": "\u00a712.3 item 4. Two scopes, reported separately because they mean different things.",
+        "properties": {
+          "account_suppressed": {
+            "title": "Account Suppressed",
+            "type": "boolean"
+          },
+          "contact_suppressed": {
+            "title": "Contact Suppressed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contact_suppressed",
+          "account_suppressed"
+        ],
+        "title": "SuppressionWarning",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerificationState": {
+        "description": "Whether an address has been confirmed reachable (\u00a715.8).\n\n``UNVERIFIED`` is the default and is *not* a soft yes: campaign policy defaults to requiring\nverification before a send is considered (`T-015`).",
+        "enum": [
+          "unverified",
+          "verified",
+          "invalid"
+        ],
+        "title": "VerificationState",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "summary": "Application-owned sales workflow. Shadow mode; live outreach is gated.",
+    "title": "Matrix Power Always-On AI Sales Agent",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/auth/session": {
+      "delete": {
+        "description": "Revoke the caller's own session, and only their own.\n\nA caller with no session gets `204` rather than `401`: signing out when already signed out is\nthe state they asked for, and answering `401` would make a dashboard sign-out button fail for\na reviewer whose session had just expired.",
+        "operationId": "sign_out_api_auth_session_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign out, revoking the current session",
+        "tags": [
+          "auth"
+        ]
+      },
+      "get": {
+        "description": "Who the caller is. `401` when nobody.\n\nNot `requires(...)`: there is no permission to hold here \u2014 the question is whether a session\nresolves at all, and every role may ask it. The dashboard uses this to tell \"signed out\" from\n\"signed in without the role\", which are different screens.",
+        "operationId": "read_session_api_auth_session_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The current session, or 401",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/stub-sign-in": {
+      "post": {
+        "description": "Issue a session for a known local user. Verifies nothing; refused outside `local`.\n\nThe environment check is the first statement on purpose \u2014 see the module docstring. An unknown\nemail is `404` and creates nobody: the roster is `Q-005` and `Q-026`, not whoever can reach\nthis port.",
+        "operationId": "stub_sign_in_endpoint_api_auth_stub_sign_in_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StubSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign in as an existing local user (local environment only)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/review/approvals/{approval_id}/revoke": {
+      "post": {
+        "description": "Withdraw an approval (\u00a78.2's `approved -> revoked`, \u00a717.6).\n\n**`APPROVE_MESSAGE`, the same permission that granted it.** Withdrawing an authorization is\nthe same authority as giving one \u2014 a role that could revoke but not approve could stop any\noutreach it disliked, and one that could approve but not revoke could not undo its own\nmistake.\n\nA reason is required with no default: \u00a717.6 wants operational actions explicable, and a\nrevocation nobody can explain later is one a reviewer cannot distinguish from a fault.",
+        "operationId": "revoke_approval_endpoint_api_review_approvals__approval_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeApprovalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke an approval so it can never dispatch",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/attention/approvals": {
+      "get": {
+        "description": "\u00a77.5's flag. A read, so `requires` rather than `requires_bearer`.\n\nOnly approvals still in `approved` are scanned: one already revoked or rejected is not an\nattention item \u2014 somebody dealt with it \u2014 and listing them would bury the ones nobody has\nlooked at.",
+        "operationId": "approvals_needing_attention_endpoint_api_review_attention_approvals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approvals that no longer authorize a send",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/candidates": {
+      "get": {
+        "description": "Candidates waiting on a person, oldest first.\n\n``principal`` is unused in the body and required in the signature: it is what runs the\nauthorization, and naming it makes that visible at the endpoint rather than hidden in a\ndecorator someone could remove without the route looking different.",
+        "operationId": "list_candidates_api_review_candidates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CampaignCandidateState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidatePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Candidates awaiting review",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/candidates/{candidate_id}": {
+      "get": {
+        "description": "\u00a712.3 items 1-5 for one candidate. Returns nothing that acts.",
+        "operationId": "get_candidate_api_review_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Everything the review card shows for one candidate",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/candidates/{candidate_id}/approve": {
+      "post": {
+        "description": "\u00a78.3 step 9: candidate approval, which queues the drafting job.\n\n**`APPROVE_CANDIDATE`, not `CORRECT_CANDIDATE`.** \u00a77.4 puts this at tier 4 \u2014 the approval that\nlets an external effect happen at all \u2014 while rejecting and deferring are tier-3 reversible\ninternal changes. The two are deliberately different permissions, so a role that may tidy the\nqueue cannot start outreach.\n\n**The recipient is checked against this candidate's contact.** A contact point id is just a\nUUID; without this, an approver could name an address belonging to somebody else entirely and\nthe drafting job would write to it. \u00a78.1 makes the candidate a `campaign + account + contact`\nmembership, so \"this candidate's contact\" is exactly the right scope.\n\n**An unverified address is refused.** Approving one would put the reputation risk ADR-008\nexists to manage onto a guess about whether the mailbox is real.\n\nNothing is sent. Approval queues drafting; shadow mode holds, and live sending stays behind\n**G-07**.",
+        "operationId": "approve_candidate_endpoint_api_review_candidates__candidate_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve a candidate for outreach to an exact recipient",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/candidates/{candidate_id}/defer": {
+      "post": {
+        "description": "\u00a78.2's `review_pending -> deferred`. A deferral with no waypoint is `409`, not a candidate\nthat quietly leaves review with nothing to bring it back.",
+        "operationId": "defer_candidate_endpoint_api_review_candidates__candidate_id__defer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Defer a candidate until a date or an event",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/candidates/{candidate_id}/reject": {
+      "post": {
+        "description": "\u00a78.2's `review_pending -> rejected`, with \u00a710.6's category recorded against it.",
+        "operationId": "reject_candidate_endpoint_api_review_candidates__candidate_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject a candidate, with a structured reason",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/candidates/{candidate_id}/request-research": {
+      "post": {
+        "description": "ADR-022: this queues an evidence pass and moves the candidate nowhere.\n\n\u00a78.2 offers no edge from `review_pending` back to `research_pending`, so unlike reject and\ndefer this decision leaves the candidate exactly where the reviewer is looking at it \u2014 the\nresponse still carries `state` so a dashboard can show that rather than assume it.\n\nA pass already in flight is `409` with the reason, not a second queued pass: a reviewer who\nclicks twice wants one more pass, not two.",
+        "operationId": "request_more_research_endpoint_api_review_candidates__candidate_id__request_research_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestResearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask for more evidence about a candidate that stays in review",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/revisions": {
+      "get": {
+        "description": "Revisions waiting on a person, longest-waiting first.",
+        "operationId": "list_revisions_api_review_revisions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MessageRevisionState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "opportunity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_age_hours",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Age Hours"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revisions awaiting review",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/revisions/{revision_id}/approve": {
+      "post": {
+        "description": "\u00a711.3 step 1, then the transaction.\n\nEvery refusal below happens before `approve_message` is called, so a rejected request writes\nnothing at all \u2014 there is no partial state for the caller to undo, and no audit event claiming\nan approval that did not happen.",
+        "operationId": "approve_message_endpoint_api_review_revisions__revision_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve an exact message revision for an exact recipient",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/revisions/{revision_id}/edit": {
+      "post": {
+        "description": "\u00a710.5: an edit creates revision N+1 and leaves N exactly as it was.\n\n`requires_bearer`, not `requires`: this is a state-changing route, and a cookie is what a\nCSRF attack rides on. See `identity.dependencies` \u2014 the exposure is removed until `T-070`\nadds real protection, rather than accepted on trust.\n\nThe actor comes from the session (\u00a712.2), never from the request body. Committed here rather\nthan by the caller: the retired approval, the superseded revision, the new one, and its\nvalidation are one decision, and a half-applied edit is the state this must never leave.",
+        "operationId": "edit_revision_endpoint_api_review_revisions__revision_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit a draft, creating the next immutable revision",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "Liveness. Deliberately touches no dependency, so it stays up while they are down.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Liveness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Readiness. Fails closed: anything other than a successful round-trip is 503.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "operations"
+        ]
+      }
+    }
+  }
+}

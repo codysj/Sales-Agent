@@ -1,0 +1,176 @@
+{
+  "$defs": {
+    "EvidenceCompleteness": {
+      "description": "\u00a710.4 `evidence_completeness`, verbatim.",
+      "enum": [
+        "complete",
+        "partial",
+        "insufficient"
+      ],
+      "title": "EvidenceCompleteness",
+      "type": "string"
+    },
+    "FitDimensionScores": {
+      "additionalProperties": false,
+      "description": "\u00a710.4 `fit_dimension_scores`. All four dimensions are required.",
+      "properties": {
+        "buyer_relevance": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Buyer Relevance",
+          "type": "integer"
+        },
+        "commercial_scale": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Commercial Scale",
+          "type": "integer"
+        },
+        "product_fit": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Product Fit",
+          "type": "integer"
+        },
+        "timing": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Timing",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "product_fit",
+        "buyer_relevance",
+        "timing",
+        "commercial_scale"
+      ],
+      "title": "FitDimensionScores",
+      "type": "object"
+    },
+    "OpportunityType": {
+      "description": "\u00a710.4 `opportunity_type`, verbatim.",
+      "enum": [
+        "direct_sale",
+        "pilot",
+        "strategic_partnership",
+        "future_follow_up",
+        "reject"
+      ],
+      "title": "OpportunityType",
+      "type": "string"
+    },
+    "SourceQualityRating": {
+      "description": "\u00a710.4 `source_quality`, verbatim.\n\nDeliberately a separate enum from `research_and_evidence.SourceQuality`: this one is the\nmodel's *assessment* of the evidence it was given, and that is not the same fact as the\nclassification an adapter recorded when the evidence was captured.",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "SourceQualityRating",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "\u00a710.4's object. Every field is required; none has a default.\n\nNo defaults on purpose. A model that omits `human_review_required` has not said whether a\nhuman must look, and defaulting that to `False` would be the system answering its own safety\nquestion (\u00a73.5). The same reasoning applies to the lists: an omitted `risks` is not the same\nclaim as an empty one.",
+  "properties": {
+    "ambiguities": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ambiguities",
+      "type": "array"
+    },
+    "applicable_approved_claim_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Applicable Approved Claim Ids",
+      "type": "array"
+    },
+    "buyer_role_assessment": {
+      "title": "Buyer Role Assessment",
+      "type": "string"
+    },
+    "campaign_candidate_id": {
+      "title": "Campaign Candidate Id",
+      "type": "string"
+    },
+    "campaign_id": {
+      "title": "Campaign Id",
+      "type": "string"
+    },
+    "eligibility_failures": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Eligibility Failures",
+      "type": "array"
+    },
+    "evidence_completeness": {
+      "$ref": "#/$defs/EvidenceCompleteness"
+    },
+    "fit_dimension_scores": {
+      "$ref": "#/$defs/FitDimensionScores"
+    },
+    "fit_summary": {
+      "title": "Fit Summary",
+      "type": "string"
+    },
+    "human_review_required": {
+      "title": "Human Review Required",
+      "type": "boolean"
+    },
+    "missing_information": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Information",
+      "type": "array"
+    },
+    "opportunity_type": {
+      "$ref": "#/$defs/OpportunityType"
+    },
+    "personalization_evidence_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Personalization Evidence Ids",
+      "type": "array"
+    },
+    "risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "source_quality": {
+      "$ref": "#/$defs/SourceQualityRating"
+    },
+    "use_case": {
+      "title": "Use Case",
+      "type": "string"
+    }
+  },
+  "required": [
+    "campaign_id",
+    "campaign_candidate_id",
+    "eligibility_failures",
+    "opportunity_type",
+    "fit_summary",
+    "use_case",
+    "buyer_role_assessment",
+    "fit_dimension_scores",
+    "evidence_completeness",
+    "source_quality",
+    "personalization_evidence_ids",
+    "applicable_approved_claim_ids",
+    "ambiguities",
+    "risks",
+    "missing_information",
+    "human_review_required"
+  ],
+  "title": "QualificationOutput",
+  "type": "object"
+}
