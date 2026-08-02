@@ -813,63 +813,49 @@ def test_the_source_adapter_registry_is_empty_by_default() -> None:
     assert "SOURCE_ADAPTERS: Final[dict[str, Callable[[], SourceAdapter]]] = {}" in source
 
 
+#: The one module licensed to wire a fixture, and the only one: `app/cli.py`. It is a development
+#: entry point that `T-040` already permits to import `app.fixtures`
+#: (`tests/test_fixtures.py::test_only_the_cli_imports_the_fixtures`), and ADR-027 records the
+#: decision that it may therefore register too. Until `T-172a` these two walks said *no file under
+#: `app/` at all* while their own docstrings said *"the CLI's or a test's act"* — a rule and its
+#: enforcement disagreeing, which is what `T-175` filed. Excluding it by path, not by name: a
+#: `cli.py` appearing anywhere else under `app/` is not this module and gets no licence.
+def _licensed_to_wire_fixtures(app_dir: Path) -> set[Path]:
+    return {app_dir / "cli.py"}
+
+
 def test_no_production_module_registers_an_adapter() -> None:
-    """The registry stays empty because nothing under `app/` calls the registrar.
+    """The registry stays empty because no production module under `app/` calls the registrar.
 
     The only Stage 1 adapter reads a directory under `app/fixtures/`, which `T-040` forbids
-    production code to import; registering it is the CLI's or a test's act.
+    production code to import; registering it is the CLI's or a test's act — and `app/cli.py` is
+    excluded here so that sentence and this walk agree (ADR-027, `T-172a`).
     """
     app_dir = Path(__file__).resolve().parents[1] / "app"
+    licensed = _licensed_to_wire_fixtures(app_dir)
     callers = [
         path.name
         for path in app_dir.rglob("*.py")
         if "register_source_adapter(" in path.read_text(encoding="utf-8")
         and path.name != "registry.py"
+        and path not in licensed
     ]
 
     assert callers == [], f"production modules registering a source adapter: {callers}"
 
 
-#: The two invariants that name the CLI in their docstring and then forbid it in their walk
-#: (`T-175`). Both guard the same rule — no production path wires a fixture — and both
-#: implement it as "no file under `app/` at all", which catches `app/cli.py`, the module
-#: `T-040` explicitly licenses to import `app.fixtures`.
-SELF_CONTRADICTING_INVARIANTS = (
-    "test_no_production_module_registers_an_adapter",
-    "test_no_production_module_installs_a_fake_adapter",
-)
+def test_the_production_worker_wires_no_fixture() -> None:
+    """`T-172a` criterion 3, and the property the exclusion above must not cost.
 
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="T-172/ADR-027: the walk forbids `cli.py`, which its own docstring sanctions",
-)
-@pytest.mark.parametrize("invariant", SELF_CONTRADICTING_INVARIANTS)
-def test_the_adapter_invariants_permit_the_caller_their_docstrings_name(invariant: str) -> None:
-    """The rule and its implementation disagree, and the gap is where `T-172` got stuck (`T-175`).
-
-    Each of these says registering or installing is *"the CLI's or a test's act"* and then walks
-    every file under `app/`, excluding only `registry.py` — so the call in `app/cli.py` that
-    `ADR-027`'s option (b) needs fails them. Proven: adding one produces `production modules
-    registering a source adapter: ['cli.py']`.
-
-    **Deliberately `xfail(strict=True)` rather than fixed here.** Excluding `cli.py` is part of
-    whichever option `ADR-027` gets, and choosing one is the user's act. When `T-172` lands the
-    exclusion these flip to `XPASS`, strict mode fails the run, and whoever is looking deletes
-    the marker — which is the point: a defect that heals silently is one nobody notices.
+    The licence belongs to `app/cli.py` alone. `python -m app.worker` is the production entry
+    point: it may register job types, and it may not make a source or a fixture-keyed model
+    resolvable. Asserted on the module source, because a runtime check after this file's own
+    fixtures have run would prove nothing.
     """
-    # Bounded by AST, not by splitting on the function's name: the first version did that and
-    # passed, because *this* test's source contains those names too, so the slice ran past the
-    # invariant into this docstring and found its own `cli.py`. `strict=True` caught it as an
-    # `XPASS`. A detector that can read itself is not a detector.
-    module = ast.parse(Path(__file__).read_text(encoding="utf-8"))
-    found = next(
-        node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == invariant
-    )
+    source = (Path(__file__).resolve().parents[1] / "app" / "worker.py").read_text(encoding="utf-8")
 
-    assert "cli.py" in ast.unparse(found), (
-        f"{invariant} still forbids `cli.py`, the caller its docstring names"
-    )
+    for wiring in ("register_source_adapter(", "set_fake_adapter_factory("):
+        assert wiring not in source, f"the production worker calls {wiring} (T-172a criterion 3)"
 
 
 def test_an_unregistered_adapter_name_is_refused() -> None:
@@ -1206,8 +1192,6 @@ def test_research_and_evidence_never_imports_the_transition_helper() -> None:
     handler is the one that tried to break it, and a future edit to that file should fail this
     test too rather than only a general one three directories away.
     """
-    import ast
-
     path = Path(__file__).resolve().parents[1] / "app" / "research_and_evidence" / "jobs.py"
     source = path.read_text(encoding="utf-8")
     imported = {
@@ -1403,13 +1387,20 @@ def test_the_hook_cannot_make_a_real_provider_appear(fake_model: None) -> None:
 
 def test_no_production_module_installs_a_fake_adapter() -> None:
     """The fixture-keyed fake reads `app/fixtures/`, which `T-040` forbids production code to
-    import, so installing it is the CLI's or a test's act — never a domain module's."""
+    import, so installing it is the CLI's or a test's act — never a domain module's.
+
+    `app/cli.py` is excluded for the reason recorded at `_licensed_to_wire_fixtures`: it is the
+    development entry point already licensed to touch fixtures, and a local worker needs the fake
+    model factory as well as the source adapter (ADR-027, `T-172a`).
+    """
     app_dir = Path(__file__).resolve().parents[1] / "app"
+    licensed = _licensed_to_wire_fixtures(app_dir)
     callers = [
         path.name
         for path in app_dir.rglob("*.py")
         if "set_fake_adapter_factory(" in path.read_text(encoding="utf-8")
         and path.name != "registry.py"
+        and path not in licensed
     ]
 
     assert callers == [], f"production modules installing a fake adapter: {callers}"

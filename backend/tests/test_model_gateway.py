@@ -14,7 +14,7 @@ price, so the check is proven to work before a real provider ever supplies one.
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, timedelta, timezone
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -629,15 +629,39 @@ def test_the_gateway_holds_no_session_of_its_own() -> None:
     assert "session" not in inspect.signature(DatabaseModelGateway.__init__).parameters
 
 
+#: A zone five hours behind UTC. Its local day boundary is five hours after UTC's, which is the
+#: only arrangement in which `_day_bounds`'s `astimezone(UTC)` is distinguishable from dropping
+#: it: two moments can share a local date and sit in different UTC days.
+WEST_OF_UTC = timezone(timedelta(hours=-5))
+
+
 def test_a_day_boundary_is_utc(db_session: Session) -> None:
-    """A budget that reset on a local day would reset twice a year, or differently per process."""
+    """A budget that reset on a local day would reset twice a year, or differently per process.
+
+    **Both moments are relative to `NOW`** (`T-184`). They used to be a literal
+    `2026-07-30T23:59`, while the versions `make_request` registers are effective from
+    `NOW - 1 day` — so the assertion expired the moment the wall clock passed it, and did: the
+    suite went red for a reason that had nothing to do with the gateway.
+
+    **And they are stated in a non-UTC zone**, which is what makes this test about UTC at all.
+    The two moments are two minutes apart across *UTC* midnight but inside one *local* day, so a
+    `_day_bounds` that read the local date would put both in one window and refuse the second.
+    With tz-aware UTC arguments — what this passed before — `astimezone(UTC)` is a no-op and the
+    test proved nothing it claimed.
+    """
     gateway = DatabaseModelGateway(
         settings=TEST_SETTINGS,
         budgets=exhausted(daily=BudgetScope(max_calls=1, max_cost_usd=Decimal("100"))),
     )
-    just_before_midnight = datetime(2026, 7, 30, 23, 59, tzinfo=UTC)
+    just_before_midnight = NOW.replace(hour=23, minute=59).astimezone(WEST_OF_UTC)
+    just_after_midnight = just_before_midnight + timedelta(minutes=2)
+    assert just_before_midnight.date() == just_after_midnight.date(), (
+        "the two moments must share a local date, or this proves nothing about UTC"
+    )
+    assert just_before_midnight.astimezone(UTC).date() != just_after_midnight.astimezone(UTC).date()
+
     gateway.run_task(db_session, make_request(db_session), at=just_before_midnight)
 
     gateway.run_task(
-        db_session, make_request(db_session), at=just_before_midnight + timedelta(minutes=2)
+        db_session, make_request(db_session), at=just_after_midnight
     )  # a new UTC day, so it must not raise

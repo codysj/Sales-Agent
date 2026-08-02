@@ -142,13 +142,17 @@ class World(ValidWorld):
         revisions.transition(
             self.session, revision, MessageRevisionState.REVIEW_PENDING, actor=OPERATOR
         )
+        # The pin the caller did not name is filled from this world's current one
+        # (`T-193b`/ADR-029). A test naming one pin wants an approval that differs in
+        # *that* pin; leaving the other null would make it invalid for a second reason and
+        # the assertion would pass for the wrong one.
         approval = request_approval(
             self.session,
             revision=revision,
             approver_id=APPROVER,
             actor=OPERATOR,
-            product_status_version_id=product_status_version_id,
-            approved_claim_set_id=approved_claim_set_id,
+            product_status_version_id=product_status_version_id or self.status.id,
+            approved_claim_set_id=approved_claim_set_id or self.claim_set.id,
         )
         return approve(self.session, approval, actor=OPERATOR)
 

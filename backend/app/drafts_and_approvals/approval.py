@@ -444,6 +444,13 @@ class InvalidationTrigger(StrEnum):
     PRODUCT_STATUS_SUPERSEDED = "product_status_superseded"
     CLAIM_SET_SUPERSEDED = "claim_set_superseded"
 
+    #: Not one of §8.4's six changes, but the reason none of them can be evaluated (`T-193b`).
+    #: An approval missing either pin cannot be shown to be current, and §11.4 requires the
+    #: dispatch transaction to recheck "product-status and approved-claim versions". This used to
+    #: read as valid; it now refuses, because the alternative is authorizing a send whose currency
+    #: nobody can establish.
+    CURRENCY_UNVERIFIABLE = "currency_unverifiable"
+
 
 @dataclass(frozen=True, slots=True)
 class Invalidation:
@@ -518,27 +525,42 @@ def invalidation_detail(
             triggering_id=revision.recipient_contact_point_id,
         )
 
-    if approval.product_status_version_id is not None:
-        from app.products_and_claims.models import ProductStatusVersion
+    # Bound to locals so the two checks below read as unconditional, which is the point: they
+    # used to be wrapped in `if ... is not None`, and a null pin therefore **skipped** them and
+    # left the approval reading as valid (`T-193b`). §11.4 says every external action *contains*
+    # `product_status_version` and `approved_claim_set_version`, and lists "product-status and
+    # approved-claim versions" among the dispatch rechecks — a recheck that cannot run is not a
+    # recheck, so the absence has to be the refusal rather than a reason to stop looking.
+    status_version_id = approval.product_status_version_id
+    claim_set_id = approval.approved_claim_set_id
+    if status_version_id is None or claim_set_id is None:
+        return Invalidation(
+            trigger=InvalidationTrigger.CURRENCY_UNVERIFIABLE,
+            reason=(
+                "the approval does not record which product status version and approved claim "
+                "set it was granted against, so §8.4's currency checks cannot be run against it"
+            ),
+        )
 
-        pinned = session.get(ProductStatusVersion, approval.product_status_version_id)
-        if pinned is None or not pinned.is_effective_at(moment):
-            return Invalidation(
-                trigger=InvalidationTrigger.PRODUCT_STATUS_SUPERSEDED,
-                reason="product status version is no longer effective",
-                triggering_id=approval.product_status_version_id,
-            )
+    from app.products_and_claims.models import ProductStatusVersion
 
-    if approval.approved_claim_set_id is not None:
-        from app.products_and_claims.claim_models import ApprovedClaimSet
+    pinned = session.get(ProductStatusVersion, status_version_id)
+    if pinned is None or not pinned.is_effective_at(moment):
+        return Invalidation(
+            trigger=InvalidationTrigger.PRODUCT_STATUS_SUPERSEDED,
+            reason="product status version is no longer effective",
+            triggering_id=status_version_id,
+        )
 
-        claim_set = session.get(ApprovedClaimSet, approval.approved_claim_set_id)
-        if claim_set is None or claim_set.superseded_at is not None:
-            return Invalidation(
-                trigger=InvalidationTrigger.CLAIM_SET_SUPERSEDED,
-                reason="approved claim set has been superseded",
-                triggering_id=approval.approved_claim_set_id,
-            )
+    from app.products_and_claims.claim_models import ApprovedClaimSet
+
+    claim_set = session.get(ApprovedClaimSet, claim_set_id)
+    if claim_set is None or claim_set.superseded_at is not None:
+        return Invalidation(
+            trigger=InvalidationTrigger.CLAIM_SET_SUPERSEDED,
+            reason="approved claim set has been superseded",
+            triggering_id=claim_set_id,
+        )
 
     return None
 

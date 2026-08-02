@@ -44,7 +44,7 @@ from app.outreach_and_replies.models import (
 )
 from app.products_and_claims.models import Product
 from app.prospects.models import Account, Contact, ContactPoint, ContactPointType
-from tests.factories import APPROVER, NOW
+from tests.factories import APPROVER, NOW, a_claim_set_pin, a_status_pin
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 
@@ -58,6 +58,7 @@ def _correlation() -> None:
 class World:
     def __init__(self, session: Session) -> None:
         product = Product(slug=f"synthetic-{uuid.uuid4().hex[:8]}", name="SYNTHETIC-Product")
+        self.product = product
         session.add(product)
         session.flush()
         self.campaign = Campaign(
@@ -103,11 +104,21 @@ class World:
         session.flush()
 
     def approval(self, session: Session) -> Approval:
+        """A granted approval, pinned as §11.4 requires (ADR-029).
+
+        Unpinned until 2026-08-02, which made every command below unbuildable the moment
+         stopped skipping the currency checks. The pins come from
+         so this world and the shared one build the same thing.
+        """
         approval = request_approval(
             session,
             revision=self.revision,
             approver_id=APPROVER,
             actor=OPERATOR,
+            product_status_version_id=a_status_pin(session, self.product.id, now=NOW),
+            approved_claim_set_id=a_claim_set_pin(
+                session, self.product.id, self.campaign.id, now=NOW
+            ),
             now=NOW,
         )
         approve(session, approval, actor=OPERATOR, now=NOW)

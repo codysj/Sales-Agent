@@ -149,6 +149,16 @@ jobs:
         run: npm ci
 
       # The canonical command list, tasks.md §2.
+      #
+      # Audit first, and **blocking** (`T-190`). This is the only check in the list whose result
+      # can change without anybody editing the repository, which is precisely why it belongs here:
+      # `T-152` cleared seven advisories and the 2026-07-31 checkpoint (M3) found its recorded
+      # counts already stale, because nothing re-measured. A red build caused by an upstream
+      # publication is the intended behaviour, not a misfire — the response is `T-152`'s: fix it,
+      # or add an override with the reason written next to it.
+      - name: Dependency advisories
+        run: npm audit --audit-level=high
+
       - name: Lint
         run: npm run lint
 

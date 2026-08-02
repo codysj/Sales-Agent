@@ -28,7 +28,10 @@ from app.drafts_and_approvals.models import MessageDraft, MessageRevision
 from app.drafts_and_approvals.revisions import create_revision
 from app.identity.models import User
 from app.outreach_and_replies.models import OutreachThread
-from app.products_and_claims.models import Product
+from app.products_and_claims.claim_models import ApprovedClaim, ApprovedClaimCampaign
+from app.products_and_claims.claims import publish_claim_set
+from app.products_and_claims.models import Product, ProductStatusVersion, ReadinessCategory
+from app.products_and_claims.status import next_version_number
 from app.prospects.imports import ImportBatch
 from app.prospects.models import (
     Account,
@@ -148,6 +151,65 @@ def create_well_known_approvers(session: Session) -> None:
         a_user(session, email, display_name)
 
 
+def a_status_pin(session: Session, product_id: uuid.UUID, *, now: datetime = NOW) -> uuid.UUID:
+    """A product readiness version to pin an approval to (`T-193b`).
+
+    Module-level because `tests/test_outreach.py` builds its own world and needs the same
+    thing; a second copy of this would be a second thing to keep correct. Separate from
+    `a_claim_set_pin` because a caller may supply either pin — building both together hits
+    `T-013`'s exclusion constraint when the caller brought its own readiness version.
+    """
+    status = ProductStatusVersion(
+        product_id=product_id,
+        version=next_version_number(session, product_id),
+        readiness_category=ReadinessCategory.EVALUATION_OR_PILOT,
+        summary="SYNTHETIC readiness for a factory world",
+        approved_by=APPROVER,
+        approved_at=now,
+        effective_from=now,
+        expires_or_review_by=None,
+    )
+    session.add(status)
+    session.flush()
+    return status.id
+
+
+def a_claim_set_pin(
+    session: Session,
+    product_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    *,
+    now: datetime = NOW,
+) -> uuid.UUID:
+    """An approved claim set to pin an approval to (`T-193b`)."""
+    claim = ApprovedClaim(
+        claim_key=f"SYNTHETIC-CLAIM-{uuid.uuid4().hex[:8]}",
+        version=1,
+        product_id=product_id,
+        text="SYNTHETIC claim text for a factory world.",
+        presumes_readiness=ReadinessCategory.EVALUATION_OR_PILOT,
+        approved_by=APPROVER,
+        approved_at=now,
+        effective_from=now,
+        expires_or_review_by=now + timedelta(days=180),
+        is_synthetic=True,
+    )
+    session.add(claim)
+    session.flush()
+    session.add(ApprovedClaimCampaign(claim_id=claim.id, campaign_id=campaign_id))
+    session.flush()
+    claim_set = publish_claim_set(
+        session,
+        product_id=product_id,
+        campaign_id=campaign_id,
+        claims=[claim],
+        approved_by=APPROVER,
+        approved_at=now,
+    )
+    session.flush()
+    return claim_set.id
+
+
 class World:
     """One coherent synthetic world: a campaign, a prospect, a draft, and a thread.
 
@@ -223,6 +285,9 @@ class World:
             created_by="drafter-1",
             actor=OPERATOR,
         )
+        #: Built on demand by `pins()`; see there for why not eagerly (`T-193b`).
+        self._status_pin: uuid.UUID | None = None
+        self._claim_set_pin: uuid.UUID | None = None
         self.thread = OutreachThread(candidate_id=self.candidate.id)
         session.add(self.thread)
         session.flush()
@@ -237,25 +302,56 @@ class World:
         self.campaign.paused = False
         self.session.flush()
 
+    def status_pin(self, *, now: datetime = NOW) -> uuid.UUID:
+        """This world's readiness version, created once (`T-193b`)."""
+        if self._status_pin is None:
+            self._status_pin = a_status_pin(self.session, self.product.id, now=now)
+        return self._status_pin
+
+    def claim_set_pin(self, *, now: datetime = NOW) -> uuid.UUID:
+        """This world's approved claim set, created once (`T-193b`).
+
+        Cached because `publish_claim_set` supersedes the current set and adds a new one:
+        calling it twice would leave the first superseded, which is precisely the state
+        `invalidation_detail` refuses.
+        """
+        if self._claim_set_pin is None:
+            self._claim_set_pin = a_claim_set_pin(
+                self.session, self.product.id, self.campaign.id, now=now
+            )
+        return self._claim_set_pin
+
     def approval(
         self,
         session: Session | None = None,
         *,
         now: datetime = NOW,
         product_status_version_id: uuid.UUID | None = None,
+        approved_claim_set_id: uuid.UUID | None = None,
+        pinned: bool = True,
     ) -> Approval:
         """A granted approval for this world's revision.
 
         ``product_status_version_id`` must be passed here rather than set afterwards: an approval's
         pins are immutable by trigger (§8.4 — "request a new approval instead").
+
+        **Pinned by default** (`T-193b`). An approval missing either pin cannot be shown to
+        be current, so `invalidation_detail` refuses it — which means an unpinned approval
+        is not a simpler approval, it is an invalid one. Pass ``pinned=False`` to build
+        that state deliberately; the tests for the refusal itself do.
         """
         active = session or self.session
+        if pinned and product_status_version_id is None:
+            product_status_version_id = self.status_pin(now=now)
+        if pinned and approved_claim_set_id is None:
+            approved_claim_set_id = self.claim_set_pin(now=now)
         approval = request_approval(
             active,
             revision=self.revision,
             approver_id=APPROVER,
             actor=OPERATOR,
             product_status_version_id=product_status_version_id,
+            approved_claim_set_id=approved_claim_set_id,
             now=now,
         )
         approve(active, approval, actor=OPERATOR, now=now)

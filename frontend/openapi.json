@@ -1052,7 +1052,8 @@
           "content_changed",
           "recipient_changed",
           "product_status_superseded",
-          "claim_set_superseded"
+          "claim_set_superseded",
+          "currency_unverifiable"
         ],
         "title": "InvalidationTrigger",
         "type": "string"

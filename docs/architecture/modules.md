@@ -90,6 +90,16 @@ model_gateway -/-> campaigns, crm, drafts_and_approvals, identity, jobs_and_outb
 global rules (`main` and cycles); the workflow modules are intentionally free to depend on entities
 and on each other in dependency order.
 
+### Composition modules
+
+One rule the table above cannot express: `app/worker_pass.py` holds the composition of a whole
+worker cycle, and **only `app/worker.py` and `app/cli.py` may import it** (`T-188`). It is not in
+the `* -/-> …` row because that row means *nobody*, and those two are exactly the callers ADR-027
+exists to permit — the production worker and the development CLI, which are entry points rather
+than modules. The list lives in `COMPOSITION_MODULES` in `backend/tests/test_module_boundaries.py`;
+a file outside it importing one fails there by name, rather than being caught incidentally by the
+cycle detector.
+
 ## Changing a rule
 
 A boundary rule encodes a specification prohibition. Loosening one is an architecture change, not a

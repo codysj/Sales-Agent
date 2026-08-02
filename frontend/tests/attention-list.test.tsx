@@ -94,6 +94,22 @@ describe("a stale approval", () => {
     expect(item).not.toContain("Approved claim set");
   });
 
+  it("tells a reviewer what to do about an approval that cannot prove its currency", () => {
+    // ADR-029. This trigger is unlike the others: nothing changed, the approval simply
+    // does not record what it was granted against, so there is no record to chase. The
+    // row has to say what to *do* — the reviewer's next action is not obvious from the
+    // trigger name the way `content_changed` makes it obvious.
+    render(
+      <AttentionList
+        rows={[row({ trigger: "currency_unverifiable", triggering_id: null })]}
+      />,
+    );
+
+    const item = screen.getByRole("listitem").textContent ?? "";
+    expect(item).toContain("Revoke it and approve again");
+    expect(item).not.toContain("Product status version");
+  });
+
   it("says a trigger names no other record rather than rendering a blank", () => {
     // "Nothing else is involved" and "we failed to load it" are the same empty cell, and they
     // need different reactions.

@@ -65,12 +65,34 @@ published claim set:
 uv run alembic upgrade head && uv run python -m app.cli seed_synthetic
 ```
 
+It also registers the **prompt, output-schema, and model-config versions** every job handler
+resolves for itself (`T-172b`). Without them `handle_qualify` fails permanently on the first of
+three `require_effective_version` calls, so a locally-run pipeline stops one step after research.
+ADR-028 records why they are registered here and what it does not solve — a **deployment** still
+has no path that registers them, which is `T-185`.
+
 Re-running it is a no-op (`created` comes back empty), so it is safe in a shell history. Both
 campaigns arrive **paused**; starting one is a deliberate act. Every row is marked synthetic and
 every name carries a `SYNTHETIC-` prefix, and the command refuses to run unless `APP_ENV` is
 `local` or `test` — a placeholder claim must never sit beside real data. `Q-017`, `Q-021`, and
 `Q-022` have delivered no approved brief or claim set, so nothing here resembles a real product
 fact; `backend/tests/test_fixtures.py` enforces that no fixture string carries a digit.
+
+### Running the pipeline locally
+
+```bash
+uv run python -m app.cli run_worker
+```
+
+Drains the queue with the Stage 1 fakes installed — the fixture source adapter and the
+fixture-keyed model — then stops. `python -m app.worker` is the production entry point and
+installs **neither**, deliberately: a process that could serve fixture evidence is the failure
+mode `backend/tests/test_pipeline_jobs.py`'s two adapter invariants exist to prevent. ADR-027
+records why the split is where it is, and `run_worker` refuses outside `local`/`test` before it
+registers anything.
+
+The full setup order is seed → start → import → drain; the walkthrough that spells it out for a
+non-engineer is `T-071a`.
 
 ### Migrations
 

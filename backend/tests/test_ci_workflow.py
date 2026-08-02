@@ -2,10 +2,13 @@
 
 The workflow file is the one piece of this repository that runs on somebody else's machine with
 the repository checked out, so what it is *not allowed to do* matters more than what it runs.
-Three things are asserted here, and none of them is "the YAML parses":
+Four things are asserted here, and none of them is "the YAML parses":
 
 * it runs the canonical command list from `tasks.md` §2 — read out of `tasks.md` rather than
   copied here, so the two cannot drift apart quietly;
+* **`process.md` §5 names that same list** (`T-191`). It is a third copy, and the reason it is
+  checked here rather than somewhere else is that this file already owns the reader; the reason it
+  is checked at all is that it had already drifted twice over;
 * it holds no more permission than reading the repository, and reads no secret;
 * `alembic upgrade head` runs **before** `pytest`. Every database fixture skips when PostgreSQL
   is unreachable (`conftest.py`), so a job whose service container never came up would otherwise
@@ -25,6 +28,13 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 LEDGER = REPO_ROOT / "tasks.md"
+
+#: The mandatory protocol, which restates the same command list in its §5 (`T-191`). A third copy,
+#: and it had already drifted: `npm audit --audit-level=high` never reached it, and `npm run test`
+#: was called *"component tests"* in prose. `process.md` is what a fresh invocation reads to find
+#: out what verification means, so a copy that drifts silently tells every future run the wrong
+#: thing.
+PROTOCOL = REPO_ROOT / "process.md"
 
 #: Actions this workflow is permitted to call. An action is third-party code running with the
 #: checkout in scope; a new one is a deliberate decision, not a diff nobody reads.
@@ -92,8 +102,19 @@ def job_commands(workflow: dict[str, Any], job: str) -> list[str]:
     return [step["run"].strip() for step in workflow["jobs"][job].get("steps", []) if "run" in step]
 
 
+#: What counts as a canonical command in a §2 fenced block. `cd backend` and `cd frontend` are the
+#: only other things those blocks contain, and they are setup rather than checks.
+#:
+#: **`npm ` and not `npm run `** (`T-190`). The narrower prefix silently dropped
+#: `npm audit --audit-level=high`, so §2's promise — *"a command added here and not to
+#: `.github/workflows/ci.yml` fails the suite"* — was false for exactly the command that guards the
+#: dependency posture, which is the one thing in this repository that decays without anybody
+#: editing it.
+COMMAND_PREFIXES = ("uv run ", "npm ")
+
+
 def canonical_commands() -> list[str]:
-    """The `uv run …` and `npm run …` commands from the fenced blocks under `tasks.md` §2.
+    """The `uv run …` and `npm …` commands from the fenced blocks under `tasks.md` §2.
 
     Read from the ledger, not restated: §2 is where the loop's command list is agreed, and a copy
     here would let CI and the loop diverge without either file looking wrong. **Every** fenced
@@ -105,11 +126,7 @@ def canonical_commands() -> list[str]:
     blocks = re.findall(r"```bash\n(.*?)\n```", section, re.DOTALL)
     assert blocks, "tasks.md §2 no longer contains a fenced bash block"
     commands = [part.strip() for block in blocks for part in block.split("&&")]
-    return [
-        command
-        for command in commands
-        if command.startswith("uv run ") or command.startswith("npm run ")
-    ]
+    return [command for command in commands if command.startswith(COMMAND_PREFIXES)]
 
 
 # --- criterion 1: the workflow runs what the loop runs -------------------------------------------
@@ -163,7 +180,24 @@ def test_the_dependency_installs_refuse_to_re_resolve(workflow: dict[str, Any]) 
     assert "npm ci" in commands
 
 
-# --- criterion 1 continued: the dashboard is checked too, and its contract is proven honest ------
+# --- T-191: the protocol document restates the same list, and it drifted -------------------------
+
+
+def protocol_verification_section() -> str:
+    """`process.md` §5, where the protocol tells an invocation what verification means."""
+    text = PROTOCOL.read_text(encoding="utf-8")
+    assert "## 5. Verification" in text, "process.md no longer has a §5 Verification section"
+    return text.split("## 5. Verification")[1].split("\n## ")[0]
+
+
+def test_the_protocol_names_every_canonical_command() -> None:
+    """`T-191`. One direction only, deliberately: §5 legitimately names commands §2 does not — the
+    three `alembic` ones are conditional on a schema change, which is why §5 is a *layered* table
+    and §2 is an unconditional list."""
+    section = protocol_verification_section()
+    missing = [command for command in canonical_commands() if command not in section]
+
+    assert not missing, f"process.md §5 does not name: {missing}"
 
 
 def test_the_dashboard_runs_its_own_canonical_commands(workflow: dict[str, Any]) -> None:

@@ -547,8 +547,15 @@ def test_a_revoked_approval_authorizes_nothing(db_session: Session, world: World
         require_valid(db_session, approval, now=NOW)
 
 
-def test_approvals_with_no_product_claim_pin_nothing(db_session: Session, world: World) -> None:
-    """A message making no product statement has no product status to invalidate it."""
+def test_an_approval_pinning_nothing_is_not_valid(db_session: Session, world: World) -> None:
+    """The reverse of what this asserted, and the reason ADR-029 exists.
+
+    It was `test_approvals_with_no_product_claim_pin_nothing`, reading *"a message making no
+    product statement has no product status to invalidate it"*, and it asserted the approval was
+    **valid**. §11.4 says every external action contains `product_status_version` and
+    `approved_claim_set_version` and lists both among the dispatch rechecks; an approval carrying
+    neither cannot be shown to be current, so it does not authorize a send.
+    """
     approval = request_approval(
         db_session, revision=world.revision, approver_id=APPROVER, actor=OPERATOR, now=NOW
     )
@@ -557,4 +564,4 @@ def test_approvals_with_no_product_claim_pin_nothing(db_session: Session, world:
 
     assert approval.product_status_version_id is None
     assert approval.approved_claim_set_id is None
-    assert is_valid(db_session, approval, now=NOW)
+    assert not is_valid(db_session, approval, now=NOW)

@@ -22,21 +22,34 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session
 
 from app.audit_and_operations.models import AuditEvent
+from app.audit_and_operations.versioning import (
+    ModelConfigVersion,
+    PromptVersion,
+    SchemaVersion,
+)
 from app.campaigns.candidate import CampaignCandidate
 from app.campaigns.models import Campaign
 from app.cli import CLI_ACTOR, EXIT_REFUSED, LOCAL_REVIEWER_EMAIL, main
 from app.core.lifecycles import CampaignCandidateState
 from app.core.settings import AppEnv, Settings
+from app.drafts_and_approvals.models import MessageRevision
+from app.fixtures.model_routing import TaskRoutingFake
+from app.fixtures.synthetic import FAKE_MODEL_CONFIGS
 from app.identity.models import RoleKey, User, UserRole
 from app.identity.sessions import resolve
 from app.identity.stub import stub_sign_in
 from app.intake import enqueue_memberships_for_import
 from app.job_types import register_job_types
 from app.jobs_and_outbox.models import Job
+from app.model_gateway.providers.echo import EchoModelAdapter
+from app.model_gateway.registry import build_provider, reset_fake_adapter_factory
 from app.outreach_and_replies.adapters import build_effect_adapter
 from app.prospects.imports import ImportBatch, import_csv
 from app.prospects.models import Account, Contact, ContactPoint
-from app.worker import one_pass
+from app.qualification.models import QualificationRun
+from app.research_and_evidence.adapters.registry import FIXTURE_ADAPTER_NAME, SOURCE_ADAPTERS
+from app.research_and_evidence.models import EvidenceSnapshot
+from app.worker_pass import one_pass
 from tests.conftest import alembic_config, render_url
 
 
@@ -83,6 +96,15 @@ def rows(url: str, model: type) -> int:
     finally:
         engine.dispose()
     return count
+
+
+#: The three versioned artefacts `seed_synthetic` registers (`T-172b`). Counted rather than
+#: inspected: what the idempotence test needs to know is that a second seed added no row.
+VERSIONED = (PromptVersion, SchemaVersion, ModelConfigVersion)
+
+#: Imported rather than restated: a test asserting "two" would keep passing after a third bounded
+#: task was added and never seeded, which is the defect the half-seeded test below is about.
+VERSIONED_MODEL_CONFIGS = FAKE_MODEL_CONFIGS
 
 
 # --- criterion 1: the import lands, and it is committed -----------------------------------------
@@ -302,10 +324,10 @@ def test_the_imported_rows_become_candidates_that_enter_the_pipeline(cli_databas
     was invisible: `tests/test_shadow_slice.py` proves the same pipeline inside a transaction
     nobody keeps, and enqueues the membership jobs itself.
 
-    **Stops short of `review_pending`, deliberately.** Getting there needs the Stage 1 fixture
-    source adapter and the fake model factory, and **no entry point registers them** — the slice
-    does it itself and says so ("`app/worker.py` registers nothing"). Asserting `review_pending`
-    here would fail for a reason this task is not about. Filed as `T-172`.
+    **Stops short of `review_pending`, deliberately**, and this test drains with `drain()` rather
+    than through `run_worker`, so it stays the assertion about the *import* that `T-169` wrote.
+    What `run_worker` adds is asserted below (`T-172a`); why even that does not reach
+    `review_pending` is `T-172b`.
     """
     assert main(["seed_synthetic"]) == 0
     assert main(["import_prospects"]) == 0
@@ -346,6 +368,195 @@ def test_each_candidate_keeps_its_own_correlation_id(cli_database: str) -> None:
 
     assert ids, "no membership jobs to check"
     assert len(set(ids)) == len(ids), "two candidates share a correlation id"
+
+
+# --- T-172a: a development entry point installs the Stage 1 fixtures ----------------------------
+
+
+@pytest.fixture(autouse=True)
+def stage_one_registry() -> Iterator[None]:
+    """Put back the empty defaults `run_worker` installs into.
+
+    Both registries are **process-wide**, so a successful `run_worker` here would otherwise leave
+    a fixture adapter resolvable for every test that ran after it — including the ones asserting
+    that a production process resolves nothing.
+    """
+    preexisting = dict(SOURCE_ADAPTERS)
+    try:
+        yield
+    finally:
+        SOURCE_ADAPTERS.clear()
+        SOURCE_ADAPTERS.update(preexisting)
+        reset_fake_adapter_factory()
+
+
+def test_running_the_worker_captures_evidence(cli_database: str) -> None:
+    """`T-172a` criterion 1. Before this, every `research.capture_evidence` job dead-lettered with
+    *"no source adapter registered under 'fixture'"* — the whole reason `T-172` was filed.
+
+    Against a **committed** database, and through the command a reader is told to run rather than
+    through `drain()`, which is a test helper nobody outside this file has.
+    """
+    assert main(["seed_synthetic"]) == 0
+    assert main(["start_campaign", "synthetic-sodium-battery"]) == 0
+    assert main(["import_prospects"]) == 0
+
+    assert main(["run_worker"]) == 0
+
+    assert rows(cli_database, EvidenceSnapshot) > 0, (
+        "the worker drained and captured no evidence; the fixture source adapter is not installed"
+    )
+    engine = create_engine(cli_database, connect_args={"connect_timeout": 5})
+    try:
+        with Session(engine) as session:
+            states = {
+                candidate.state
+                for candidate in session.execute(select(CampaignCandidate)).scalars()
+            }
+    finally:
+        engine.dispose()
+
+    # "At least researched", not "researched": `T-172b` registered the versions qualification
+    # needs, so a candidate that finished research now carries on to `REVIEW_PENDING` in the same
+    # drain. What this test owns is that research *completed* — the step the source adapter is
+    # needed for. Reaching review is asserted by `T-172b`'s own test below.
+    assert states & {CampaignCandidateState.RESEARCHED, CampaignCandidateState.REVIEW_PENDING}, (
+        f"no candidate finished research: {sorted(s.value for s in states)}"
+    )
+    # The other half of what the command installs. Research needs no model, so nothing above
+    # would notice if the fake were never installed — and `T-172b` cannot start from a process
+    # that resolves `EchoModelAdapter`, which answers any prompt with an echo.
+    assert isinstance(build_provider(Settings(app_env=AppEnv.TEST)), TaskRoutingFake), (
+        "run_worker drained without installing the fixture-keyed model fake"
+    )
+
+
+# --- T-172b: the versions a real database had none of -------------------------------------------
+
+
+def test_the_documented_commands_reach_a_review_queue(cli_database: str) -> None:
+    """`T-172b` criterion 1, and `T-172`'s objective: a locally-run worker completes the pipeline.
+
+    This is the assertion gate **G-10** rests on. Everything before it produced a queue a
+    non-engineer could open and find empty — first no candidates (`T-169`), then no roles
+    (`T-170`), then no source adapter (`T-172a`), then no model-config version (this task). Run
+    against a **committed** database, through the four commands and nothing else.
+    """
+    assert main(["seed_synthetic"]) == 0
+    assert main(["start_campaign", "synthetic-sodium-battery"]) == 0
+    assert main(["import_prospects"]) == 0
+    assert main(["run_worker"]) == 0
+
+    engine = create_engine(cli_database, connect_args={"connect_timeout": 5})
+    try:
+        with Session(engine) as session:
+            states = [
+                candidate.state
+                for candidate in session.execute(select(CampaignCandidate)).scalars()
+            ]
+            qualified = session.execute(select(func.count()).select_from(QualificationRun))
+            qualification_runs = qualified.scalar_one()
+            drafted = session.execute(select(func.count()).select_from(MessageRevision))
+            revisions = drafted.scalar_one()
+    finally:
+        engine.dispose()
+
+    assert CampaignCandidateState.REVIEW_PENDING in states, (
+        f"no candidate reached review: {sorted({s.value for s in states})}"
+    )
+    # A candidate could in principle be presented for review without the model having run at all,
+    # so the run is asserted too — it is the thing the three missing versions were blocking.
+    assert qualification_runs > 0, "a candidate reached review with no qualification run"
+
+    # **And nothing is drafted, which is correct.** §8.3 step 8 presents for review and step 9
+    # drafts; `approve_candidate` is what enqueues `drafts.draft_message`, and that is a human's
+    # act in the dashboard. A drain that produced a message would mean the pipeline had written
+    # prospect-facing copy nobody approved.
+    assert revisions == 0, f"the drain drafted {revisions} revisions without a human approval"
+
+
+def test_seeding_twice_publishes_no_second_version(cli_database: str) -> None:
+    """`T-172b`, the property the whole module is built on: seeding is a get-or-create.
+
+    A second `register_prompt_versions` that republished would close the first version's window
+    and start a second, so a `ModelRun` written before the re-seed would cite a version that had
+    been superseded for no reason. The registrars are content-hash idempotent and the model
+    configurations are guarded per key; this is what proves both at once.
+    """
+    assert main(["seed_synthetic"]) == 0
+    first = {model: rows(cli_database, model) for model in VERSIONED}
+
+    assert main(["seed_synthetic"]) == 0
+
+    assert {model: rows(cli_database, model) for model in VERSIONED} == first
+    assert all(count > 0 for count in first.values()), f"seeding registered nothing: {first}"
+
+
+def test_a_half_seeded_database_gains_the_missing_model_config(cli_database: str) -> None:
+    """The `T-148` trap, which this repository has fallen into twice: a registration loop that
+    stops at the first item it finds already present.
+
+    Reachable rather than theoretical — the day a third bounded task is added, every existing
+    local database is exactly this shape. Written as delete-and-re-seed because that is the
+    cheapest way to produce "one present, one absent" without pretending a new task exists.
+
+    **The key removed is the one the loop reaches last**, not the last alphabetically. The first
+    version of this test used `order_by(key)` and a control proved it worthless: that happens to
+    be the loop's *first* key, so replacing `continue` with `break` produced the same database
+    and the test passed. A control that does not bite is a finding.
+    """
+    removed_key = VERSIONED_MODEL_CONFIGS[-1]
+    assert main(["seed_synthetic"]) == 0
+    engine = create_engine(cli_database, connect_args={"connect_timeout": 5})
+    try:
+        with Session(engine) as session:
+            session.delete(
+                session.execute(
+                    select(ModelConfigVersion).where(ModelConfigVersion.key == removed_key)
+                ).scalar_one()
+            )
+            session.commit()
+    finally:
+        engine.dispose()
+    assert rows(cli_database, ModelConfigVersion) == len(VERSIONED_MODEL_CONFIGS) - 1
+
+    assert main(["seed_synthetic"]) == 0
+
+    engine = create_engine(cli_database, connect_args={"connect_timeout": 5})
+    try:
+        with Session(engine) as session:
+            keys = set(session.execute(select(ModelConfigVersion.key)).scalars())
+    finally:
+        engine.dispose()
+    assert removed_key in keys, f"re-seeding stopped before {removed_key}: {sorted(keys)}"
+
+
+@pytest.mark.parametrize("app_env", [AppEnv.PRODUCTION, AppEnv.STAGING])
+def test_running_the_worker_is_refused_outside_a_seedable_environment(
+    app_env: AppEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T-172a` criterion 2, and the half that matters: it must register **nothing** on the way
+    out.
+
+    A refusal that had already made the fixture adapter resolvable would leave the process able to
+    serve fixture evidence, which is the exact failure the two adapter invariants exist to
+    prevent. The database named here does not exist, so this can also only pass by refusing before
+    it connects.
+    """
+    settings = Settings(
+        app_env=app_env,
+        database_url="postgresql+psycopg://nobody:nothing@127.0.0.1:1/does-not-exist",
+    )
+    monkeypatch.setattr("app.cli.get_settings", lambda: settings)
+
+    assert main(["run_worker"]) == EXIT_REFUSED
+
+    assert FIXTURE_ADAPTER_NAME not in SOURCE_ADAPTERS, (
+        "a refused run_worker left a fixture source adapter registered"
+    )
+    assert isinstance(build_provider(Settings(app_env=AppEnv.TEST)), EchoModelAdapter), (
+        "a refused run_worker left the fixture-keyed fake installed"
+    )
 
 
 def test_a_row_naming_no_campaign_enqueues_nothing(cli_database: str) -> None:

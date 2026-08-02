@@ -67,6 +67,16 @@ const TRIGGERS: Record<AttentionRow["trigger"], { what: string; names: string | 
     what: "The approved claim set this was approved against has been superseded.",
     names: "Approved claim set",
   },
+  // Not one of §8.4's changes, but the reason none of them can be checked (ADR-029). Worded as
+  // what a reviewer should do rather than what the row lacks: there is nothing to chase here, so
+  // `names` is null — the identifier a reviewer would follow is the one that is missing.
+  currency_unverifiable: {
+    what:
+      "This approval does not record which product readiness version and approved claim set it " +
+      "was granted against, so there is no way to tell whether they still hold. Revoke it and " +
+      "approve again.",
+    names: null,
+  },
 };
 
 type Outcome =

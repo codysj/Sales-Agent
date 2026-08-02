@@ -103,7 +103,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run
 | State-transition and safety invariants | Workflow logic changed | The `tasks.md` `T-010`/`T-024` suites plus a new invariant test for the changed rule. |
 | Fake-adapter / test-mode check | Integration boundary touched | Exercise the fake adapter's success, timeout, ambiguous, and rate-limited modes. Prove no real client is constructible. |
 | Diff review | Always | Read the full diff for: accidental scope, secret or credential leakage, unsafe defaults, unsupported product claims, real prospect data, and any external effect. |
-| Frontend | `frontend/` touched | `npm run lint`, `npm run typecheck`, `npm run build`, component tests. |
+| Frontend | `frontend/` touched | `npm audit --audit-level=high`, `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`. The audit is in the list because it is the one check whose result changes without anybody editing the repository (`T-190`). |
 
 Rules:
 

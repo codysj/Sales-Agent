@@ -755,3 +755,91 @@ def test_the_opt_out_walk_sees_the_call_it_is_required_not_to_flag() -> None:
     assert opt_out_minting_lines(tree) == [], (
         "dedup carries an already-recorded source rather than minting one, and must not be flagged"
     )
+
+
+# --- T-193a: an approval that cannot prove its currency must not be minted -----------------------
+
+#: The function that opens an approval. Both pins are optional in its signature, which is what
+#: makes this walk necessary rather than decorative.
+APPROVAL_FUNCTION = "request_approval"
+
+#: The two §11.4 pins. `invalidation_detail` guards each currency check with `is not None`, so
+#: an approval missing either one **skips** that check and reads as still valid — it fails
+#: open. The 2026-07-31 checkpoint's HIGH finding `H1` was exactly this, and `T-157` fixed the
+#: production caller. Nothing stops a *second* caller recreating it; that is what this is for.
+REQUIRED_PINS = ("product_status_version_id", "approved_claim_set_id")
+
+
+def approval_calls(tree: ast.AST) -> list[ast.Call]:
+    """Every call to `request_approval`, however it was imported or spelled."""
+    names = local_names_for(tree, APPROVAL_FUNCTION)
+    return [
+        node for node in ast.walk(tree) if isinstance(node, ast.Call) and called_name(node) in names
+    ]
+
+
+def unpinned_approval_calls(tree: ast.AST) -> list[tuple[int, str]]:
+    """`(line, missing pin)` for each call that omits one."""
+    return [
+        (node.lineno, pin)
+        for node in approval_calls(tree)
+        for pin in REQUIRED_PINS
+        if pin not in {keyword.arg for keyword in node.keywords}
+    ]
+
+
+def test_every_production_approval_pins_both_versions() -> None:
+    """`T-193a` criterion 1. An approval whose pins are null can never be shown to be stale."""
+    offenders = [
+        f"{path.relative_to(APP).as_posix()}:{line} omits {pin}"
+        for path in sorted(APP.rglob("*.py"))
+        for line, pin in unpinned_approval_calls(ast.parse(path.read_text(encoding="utf-8")))
+    ]
+
+    assert not offenders, (
+        "these open an approval without pinning the versions §11.4 requires, so §8.4's "
+        f"currency checks would silently skip it: {offenders}"
+    )
+
+
+def test_the_approval_walk_finds_the_call_it_is_checking() -> None:
+    """`T-193a` criterion 4. A walk that found nothing would pass the test above forever — and
+    `approve_message` holding the only production call is precisely the fact this guards.
+    """
+    found = {
+        path.relative_to(APP).as_posix()
+        for path in sorted(APP.rglob("*.py"))
+        if approval_calls(ast.parse(path.read_text(encoding="utf-8")))
+    }
+
+    assert found == {"outreach_and_replies/approve_message.py"}, found
+
+
+def test_the_approval_walk_reads_both_call_forms() -> None:
+    """`T-193a` criterion 3. A walk that records only bare names is blind to
+    `module.function()`, and one that ignores `as` aliases is blind to a rename — both have
+    been used to evade a check in this repository before.
+    """
+    aliased = ast.parse(
+        "from app.drafts_and_approvals.approval import request_approval as open_approval\n"
+        "open_approval(session, revision=r, approver_id=a, actor=o)\n"
+    )
+    attribute = ast.parse(
+        "from app.drafts_and_approvals import approval\n"
+        "approval.request_approval(session, revision=r, approver_id=a, actor=o)\n"
+    )
+
+    assert len(unpinned_approval_calls(aliased)) == len(REQUIRED_PINS)
+    assert len(unpinned_approval_calls(attribute)) == len(REQUIRED_PINS)
+
+
+def test_the_approval_walk_accepts_a_fully_pinned_call() -> None:
+    """The other half: a checker so strict it flagged the correct form would be deleted rather
+    than fixed."""
+    pinned = ast.parse(
+        "from app.drafts_and_approvals.approval import request_approval\n"
+        "request_approval(session, revision=r, approver_id=a, actor=o,\n"
+        "                 product_status_version_id=s, approved_claim_set_id=c)\n"
+    )
+
+    assert unpinned_approval_calls(pinned) == []

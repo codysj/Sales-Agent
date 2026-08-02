@@ -35,11 +35,20 @@ from typing import Final
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit_and_operations.versioning import (
+    ModelConfigVersion,
+    content_hash,
+    effective_version,
+)
 from app.campaigns.models import Campaign, TargetSegment
 from app.campaigns.policy import CampaignPolicy
 from app.campaigns.service import get_current_policy_version, publish_policy_version
-from app.core.settings import AppEnv, Settings, get_settings
+from app.core.settings import AppEnv, ModelProvider, Settings, get_settings
+from app.drafts_and_approvals.jobs import DEFAULT_MODEL_CONFIG_KEY as DRAFT_CONFIG_KEY
 from app.identity.models import User
+from app.model_gateway.prompts import register_prompt_versions
+from app.model_gateway.providers.fake import MODEL_NAME as FAKE_MODEL_NAME
+from app.model_gateway.schemas import register_schema_versions
 from app.products_and_claims.claim_models import ApprovedClaim, ApprovedClaimCampaign
 from app.products_and_claims.claims import (
     claim_is_allowed_for_campaign,
@@ -48,6 +57,7 @@ from app.products_and_claims.claims import (
 )
 from app.products_and_claims.models import Product, ProductStatusVersion, ReadinessCategory
 from app.products_and_claims.status import get_effective_status, next_version_number
+from app.qualification.jobs import DEFAULT_MODEL_CONFIG_KEY as QUALIFY_CONFIG_KEY
 
 #: Every seeded name carries this, so a row that reached a real campaign is obvious on sight.
 SYNTHETIC_PREFIX: Final = "SYNTHETIC-"
@@ -72,6 +82,21 @@ CLAIM_REVIEW_INTERVAL: Final = timedelta(days=180)
 #: Environments a seed may run in. An explicit allow-list: a new environment is refused until
 #: someone decides otherwise.
 SEEDABLE_ENVIRONMENTS: Final = frozenset({AppEnv.LOCAL, AppEnv.TEST})
+
+#: Who publishes the versions this module registers. An `Actor` id, not a person (ADR-025): a
+#: prompt or schema version is published by a process here, and `created_by` on a versioned
+#: artefact is deliberately not a user column (`T-136` says so in `VersionedArtefact`).
+SEED_PUBLISHER: Final = "fixtures.seed_synthetic"
+
+#: The bounded tasks whose model configuration a locally-run worker needs (`T-172b`). Both name
+#: the **fake** provider, which is the only member `ModelProvider` has: gate **G-03** is locked
+#: and `Q-012` has approved no provider or its data-handling terms. A real deployment naming a
+#: real provider is a different act, in a different place, behind that gate.
+FAKE_MODEL_CONFIGS: Final = (QUALIFY_CONFIG_KEY, DRAFT_CONFIG_KEY)
+
+#: Parameters recorded on those configurations. Zero temperature because a fixture-keyed lookup
+#: has nothing to vary, and a run cites the parameters it used (§14.5).
+FAKE_MODEL_PARAMETERS: Final[dict[str, object]] = {"temperature": 0}
 
 
 class SeedRefused(Exception):
@@ -256,6 +281,63 @@ def _has_segment(session: Session, campaign_id: uuid.UUID, key: str) -> bool:
     return session.execute(statement).first() is not None
 
 
+def _seed_versions(session: Session, *, moment: datetime) -> list[str]:
+    """Register the prompt, schema, and model-config versions a job handler resolves (`T-172b`).
+
+    **Why this is here and not somewhere more obviously right.** `handle_qualify` and
+    `handle_draft` call `require_effective_version` three times each and fail **permanently** when
+    any is missing (§7.2 "validate policy and input version", §14.5). Nothing outside `tests/`
+    registered any, so a database built by the documented commands produced candidates, researched
+    them, and then stopped — with the reason inside a dead job. ADR-028 records the choice of home
+    and what it does not solve: a **deployment** still has no path that registers these, which is
+    `T-185`, and needs `Q-018` to have said what a deployment is.
+
+    The two registrars are content-hash idempotent and are production code over production
+    artefacts — the prompt `.txt` and schema `.json` files under `app/model_gateway/`. Nothing
+    synthetic is being published; what makes this the right *caller* today is that
+    `seed_synthetic` is the one step that runs before anything else locally.
+
+    The model configurations **are** a local choice, and they name the fake provider only.
+    """
+    created: list[str] = []
+    created += [
+        f"prompt version {version.key}"
+        for version in register_prompt_versions(session, created_by=SEED_PUBLISHER, at=moment)
+    ]
+    created += [
+        f"schema version {version.key}"
+        for version in register_schema_versions(session, created_by=SEED_PUBLISHER, at=moment)
+    ]
+
+    # One `if` per key rather than a loop that returns on the first (the `T-148` trap): a database
+    # holding the qualification configuration and not the draft one must gain the draft one.
+    for key in FAKE_MODEL_CONFIGS:
+        if effective_version(session, ModelConfigVersion, key, at=moment) is not None:
+            continue
+        session.add(
+            ModelConfigVersion(
+                key=key,
+                version=1,
+                content_hash=content_hash(
+                    {
+                        "provider": ModelProvider.FAKE.value,
+                        "model_name": FAKE_MODEL_NAME,
+                        "parameters": FAKE_MODEL_PARAMETERS,
+                    }
+                ),
+                effective_from=moment,
+                created_by=SEED_PUBLISHER,
+                provider=ModelProvider.FAKE,
+                model_name=FAKE_MODEL_NAME,
+                parameters=dict(FAKE_MODEL_PARAMETERS),
+            )
+        )
+        session.flush()
+        created.append(f"model config {key}")
+
+    return created
+
+
 def seed_synthetic(
     session: Session,
     *,
@@ -281,6 +363,8 @@ def seed_synthetic(
         )
         session.flush()
         created.append(f"user {SEED_APPROVER}")
+
+    created += _seed_versions(session, moment=moment)
 
     for fixture in CAMPAIGN_FIXTURES:
         product = _get_product(session, fixture.product_slug)

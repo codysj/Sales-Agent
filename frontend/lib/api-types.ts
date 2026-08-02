@@ -921,7 +921,7 @@ export interface components {
          *     together, because any of them changing changes the hash.
          * @enum {string}
          */
-        InvalidationTrigger: "not_approved" | "expired" | "revision_missing" | "revision_retired" | "content_changed" | "recipient_changed" | "product_status_superseded" | "claim_set_superseded";
+        InvalidationTrigger: "not_approved" | "expired" | "revision_missing" | "revision_retired" | "content_changed" | "recipient_changed" | "product_status_superseded" | "claim_set_superseded" | "currency_unverifiable";
         /** Liveness */
         Liveness: {
             /**

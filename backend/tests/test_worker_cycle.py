@@ -26,7 +26,7 @@ from app.outreach_and_replies.adapters import build_effect_adapter
 from app.outreach_and_replies.adapters.fake import FakeExternalEffectAdapter
 from app.outreach_and_replies.commands import create_send_command
 from app.prospects.models import Account
-from app.worker import PassResult, one_pass
+from app.worker_pass import PassResult, one_pass
 from tests.factories import APPROVER, NOW, OPERATOR, World
 
 WORKER_ID = "worker-under-test"

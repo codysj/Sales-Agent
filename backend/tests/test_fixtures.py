@@ -19,6 +19,13 @@ from sqlalchemy.orm import Session
 
 from app.campaigns.models import Campaign, CampaignPolicyVersion, TargetSegment
 from app.core.settings import AppEnv, Settings
+from app.fixtures.model_routing import (
+    DRAFT_OUTPUTS_BY_CAMPAIGN_NAME,
+    DRAFT_PROMPT_MARKER,
+    QUALIFICATION_OUTPUTS,
+    NoFixtureSetForPrompt,
+    TaskRoutingFake,
+)
 from app.fixtures.synthetic import (
     CAMPAIGN_FIXTURES,
     SEED_APPROVER,
@@ -29,6 +36,7 @@ from app.fixtures.synthetic import (
     seed_synthetic,
 )
 from app.identity.models import User
+from app.model_gateway.prompts import prompt_template
 from app.products_and_claims.claim_models import (
     ApprovedClaim,
     ApprovedClaimSet,
@@ -343,6 +351,72 @@ def test_seeded_campaigns_start_paused(db_session: Session) -> None:
 
     assert campaigns
     assert all(campaign.paused for campaign in campaigns)
+
+
+# --- T-189: the fixture router's couplings, which are literals in two files ----------------------
+
+
+def test_every_seeded_campaign_has_a_draft_fixture_set() -> None:
+    """`T-189` criterion 1. A campaign the router does not know raises `NoFixtureSetForPrompt`
+    **during drafting** — inside a job, surfacing as a dead job's reason, which is the exact
+    failure mode `T-172` was filed for."""
+    unrouted = sorted(
+        fixture.campaign_name
+        for fixture in CAMPAIGN_FIXTURES
+        if fixture.campaign_name not in DRAFT_OUTPUTS_BY_CAMPAIGN_NAME
+    )
+
+    assert not unrouted, f"seeded campaigns with no draft fixture set: {unrouted}"
+
+
+def test_every_draft_fixture_set_names_a_seeded_campaign() -> None:
+    """`T-189` criterion 2, the other direction. A key matching no campaign is either a typo that
+    will never fire or a fixture set for a campaign somebody removed."""
+    seeded = {fixture.campaign_name for fixture in CAMPAIGN_FIXTURES}
+    orphaned = sorted(name for name in DRAFT_OUTPUTS_BY_CAMPAIGN_NAME if name not in seeded)
+
+    assert not orphaned, f"draft fixture sets naming no seeded campaign: {orphaned}"
+
+
+def test_the_draft_prompt_carries_the_marker_the_router_looks_for() -> None:
+    """`T-189` criterion 3, and the coupling with the quietest failure.
+
+    The router reads the marker out of the *rendered prompt*. Reword the template's first line and
+    every draft routes to the qualification fixture set instead — no exception, just a §10.4-shaped
+    answer to the wrong question, caught downstream by schema validation for a reason that names
+    nothing about routing.
+    """
+    assert DRAFT_PROMPT_MARKER in prompt_template("draft")
+
+
+def test_the_qualification_prompt_does_not_carry_the_draft_marker() -> None:
+    """The same coupling from the other side: a qualification prompt that matched would route to a
+    draft fixture set, and `FakeModelAdapter` would answer a qualification with a message."""
+    assert DRAFT_PROMPT_MARKER not in prompt_template("qualification")
+
+
+@pytest.mark.parametrize(
+    "directory",
+    [QUALIFICATION_OUTPUTS, *DRAFT_OUTPUTS_BY_CAMPAIGN_NAME.values()],
+    ids=lambda path: path.name,
+)
+def test_every_routed_fixture_directory_exists(directory: Path) -> None:
+    """`T-189` criterion 4. Referenced by path and, until now, never asserted to be there."""
+    assert directory.is_dir(), f"the router points at {directory}, which does not exist"
+
+
+def test_a_draft_prompt_naming_no_seeded_campaign_is_refused() -> None:
+    """The refusal `T-172a` introduced and nothing exercised.
+
+    It raises rather than falling back to the qualification set, because a draft answered from the
+    wrong fixture set is a schema-valid message citing another campaign's approved claims — and
+    §11.4 pins claims to the campaign for exactly that reason.
+    """
+    with pytest.raises(NoFixtureSetForPrompt):
+        TaskRoutingFake().complete(
+            prompt=f"{DRAFT_PROMPT_MARKER} for SYNTHETIC-Campaign-That-Was-Never-Seeded",
+            parameters={},
+        )
 
 
 # --- T-060b: the committed OpenAPI document matches the application ------------------------------

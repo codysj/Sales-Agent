@@ -29,7 +29,6 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
 import structlog
@@ -38,7 +37,6 @@ from sqlalchemy.orm import Session
 
 from app.audit_and_operations.models import ActorType, AuditEvent
 from app.audit_and_operations.service import Actor, record_audit_event
-from app.audit_and_operations.versioning import ModelConfigVersion, content_hash
 from app.campaigns import jobs as campaign_jobs
 from app.campaigns.approval import approve_candidate
 from app.campaigns.candidate import CampaignCandidate
@@ -47,9 +45,9 @@ from app.campaigns.models import Campaign
 from app.core.lifecycles import CampaignCandidateState, MessageRevisionState
 from app.core.settings import AppEnv, ModelProvider, Settings
 from app.drafts_and_approvals import jobs as draft_jobs
-from app.drafts_and_approvals.jobs import DEFAULT_MODEL_CONFIG_KEY as DRAFT_CONFIG_KEY
 from app.drafts_and_approvals.models import MessageDraft, MessageRevision
-from app.fixtures import PROSPECTS_CSV
+from app.fixtures import PROSPECTS_CSV, SOURCE_DOCUMENTS
+from app.fixtures.model_routing import TaskRoutingFake
 from app.fixtures.synthetic import seed_synthetic
 from app.intake import enqueue_memberships_for_import
 from app.jobs_and_outbox.models import Job, JobState
@@ -57,10 +55,7 @@ from app.jobs_and_outbox.queue import enqueue, lease_jobs
 from app.jobs_and_outbox.registry import registry as job_registry
 from app.jobs_and_outbox.runner import execute
 from app.model_gateway.models import ModelRun
-from app.model_gateway.prompts import register_prompt_versions
-from app.model_gateway.providers.fake import FakeModelAdapter
 from app.model_gateway.registry import reset_fake_adapter_factory, set_fake_adapter_factory
-from app.model_gateway.schemas import register_schema_versions
 from app.products_and_claims.models import Product
 from app.prospects.imports import import_csv
 from app.prospects.models import (
@@ -71,7 +66,6 @@ from app.prospects.models import (
     VerificationState,
 )
 from app.qualification import jobs as qualification_jobs
-from app.qualification.jobs import DEFAULT_MODEL_CONFIG_KEY as QUALIFY_CONFIG_KEY
 from app.qualification.models import QualificationRun
 from app.research_and_evidence import jobs as research_jobs
 from app.research_and_evidence.adapters.fixture import FixtureSourceAdapter
@@ -84,15 +78,6 @@ from app.research_and_evidence.models import EvidenceSnapshot
 from tests.factories import NOW
 
 BACKEND = Path(__file__).resolve().parents[1]
-FIXTURES = BACKEND / "app" / "fixtures"
-SOURCE_DOCUMENTS = FIXTURES / "source_documents"
-QUALIFICATION_OUTPUTS = FIXTURES / "model_outputs" / "slice_qualification"
-#: Keyed by the campaign *name*, because that is what a draft prompt carries — the slug never
-#: reaches the model. Seeded by `app/fixtures/synthetic.py`.
-DRAFT_OUTPUTS_BY_CAMPAIGN_NAME = {
-    "SYNTHETIC-Sodium Battery Campaign": FIXTURES / "model_outputs" / "slice_draft_sodium",
-    "SYNTHETIC-DC Fast Charging Campaign": FIXTURES / "model_outputs" / "slice_draft_charging",
-}
 
 OPERATOR = Actor(type=ActorType.HUMAN, id="operator-1")
 TEST_SETTINGS = Settings(app_env=AppEnv.TEST)
@@ -160,54 +145,11 @@ class SliceResult:
             self.revisions[slug].append(revision)
 
 
-class TaskRoutingFake:
-    """Serves the fixture set belonging to the task — and campaign — the prompt came from.
-
-    `FakeModelAdapter` allows one `match: "default"` per directory and a default answers *any*
-    prompt, so one directory cannot hold both a qualification and a draft expectation, and the
-    two campaigns cite different claim keys. Routing on markers the prompt already carries keeps
-    each expectation in its own reviewable directory. Test-only: production installs one adapter
-    for one configured task.
-    """
-
-    model_name = "deterministic-fake"
-
-    def _directory_for(self, prompt: str) -> Path:
-        if "SYNTHETIC-PROMPT draft" not in prompt:
-            return QUALIFICATION_OUTPUTS
-        for name, directory in DRAFT_OUTPUTS_BY_CAMPAIGN_NAME.items():
-            if name in prompt:
-                return directory
-        raise AssertionError("a draft prompt named no campaign this fixture set knows")
-
-    def complete(self, *, prompt: str, parameters: dict[str, Any]) -> Any:
-        return FakeModelAdapter(directory=self._directory_for(prompt)).complete(
-            prompt=prompt, parameters=parameters
-        )
-
-
-def _register_versions(session: Session) -> None:
-    """The prompt, schema, and model-config versions the job handlers resolve for themselves.
-
-    Handlers look versions up rather than taking them as arguments (§7.2 "validate policy and
-    input version", §14.5), so the slice registers them and never passes an ID anywhere.
-    """
-    register_prompt_versions(session, created_by="operator-1", at=NOW)
-    register_schema_versions(session, created_by="operator-1", at=NOW)
-    for key in (QUALIFY_CONFIG_KEY, DRAFT_CONFIG_KEY):
-        session.add(
-            ModelConfigVersion(
-                key=key,
-                version=1,
-                content_hash=content_hash(key),
-                effective_from=NOW,
-                created_by="operator-1",
-                provider=ModelProvider.FAKE,
-                model_name="deterministic-fake",
-                parameters={"temperature": 0},
-            )
-        )
-    session.flush()
+#: Nothing registers versions here any more (`T-172b`). `seed_synthetic` does it, the way
+#: `T-173` moved the membership enqueue onto the production path: a slice that registers
+#: what production also registers proves the handlers work and hides whether anything
+#: outside a test ever supplies them. It did not, for months. Leaving both would now be a
+#: `uq_model_config_version_key_version` violation, which is the honest failure mode.
 
 
 def _start_campaigns(session: Session) -> None:
@@ -267,7 +209,6 @@ def run_slice(session: Session) -> SliceResult:
 
     seed_synthetic(session, settings=TEST_SETTINGS, at=NOW)
     _start_campaigns(session)
-    _register_versions(session)
 
     # --- §8.3 step 1: the operator's import ------------------------------------------------------
 
@@ -528,7 +469,6 @@ def test_every_model_run_used_the_fake_provider(
     db_session: Session, slice_result: SliceResult
 ) -> None:
     """Gate **G-03** is locked, so a run against anything else could not have been legitimate."""
-    from app.core.settings import ModelProvider
 
     providers = set(db_session.execute(select(ModelRun.provider)).scalars().all())
 
@@ -853,7 +793,6 @@ def test_no_draft_exists_before_the_approval(
     """
     seed_synthetic(db_session, settings=TEST_SETTINGS, at=NOW)
     _start_campaigns(db_session)
-    _register_versions(db_session)
     import_csv(
         db_session,
         content=PROSPECTS_CSV.read_bytes(),
@@ -912,7 +851,6 @@ def test_a_paused_campaign_still_produces_nothing_through_the_worker(
     which is the version that matters, since the job is what production runs.
     """
     seed_synthetic(db_session, settings=TEST_SETTINGS, at=NOW)
-    _register_versions(db_session)
     import_csv(
         db_session,
         content=PROSPECTS_CSV.read_bytes(),

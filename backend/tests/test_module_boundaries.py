@@ -74,6 +74,27 @@ FORBIDDEN: dict[str, tuple[frozenset[str], str]] = {
 #: Nothing may import the application factory; it wires everything else together.
 FORBIDDEN_FOR_ALL = frozenset({"main", "worker"})
 
+#: Composition modules, and the **only** files allowed to import each (`T-188`).
+#:
+#: `FORBIDDEN_FOR_ALL` says "nobody", which is why `worker` is in it — and until `T-172a` the
+#: worker's pass loop lived there, so "nobody composes a pass except the process that is one" came
+#: free. ADR-027 moved the loop to `app/worker_pass.py` so `python -m app.cli` could drive it too.
+#: That is the decision; this is the guard it needs, because `FORBIDDEN_FOR_ALL` cannot express
+#: *"only an entry point"* — adding `worker_pass` to it would forbid the two callers the ADR exists
+#: to permit.
+#:
+#: **The property is not currently violated, and was not when this was written.** A probe inserting
+#: the import into each of the 13 top-level packages was caught every time — by `find_cycles`,
+#: because `worker_pass` reaches `outreach_and_replies` and that closure loops back everywhere.
+#: That is protection by consequence: narrow the closure and packages start escaping with no test
+#: naming what broke.
+#:
+#: Keyed by module name, valued by paths relative to ``app/`` — a path, not a filename, so a
+#: `cli.py` somewhere else in the tree inherits no licence.
+COMPOSITION_MODULES: dict[str, frozenset[str]] = {
+    "worker_pass": frozenset({"worker.py", "cli.py"}),
+}
+
 
 def _iter_source_files() -> list[Path]:
     return sorted(APP.rglob("*.py"))
@@ -119,6 +140,21 @@ def find_violations(files: dict[Path, str]) -> list[str]:
         forbidden, reason = FORBIDDEN.get(package, (frozenset(), ""))
         for target in sorted(imported & forbidden):
             violations.append(f"{path.name}: {package} must not import {target} — {reason}")
+    return violations
+
+
+def composition_violations(files: dict[Path, str]) -> list[str]:
+    """One violation per file importing a composition module it is not an entry point for."""
+    violations: list[str] = []
+    for path, source in files.items():
+        here = path.relative_to(APP).as_posix()
+        imported = imported_app_packages(source)
+        for module, entry_points in sorted(COMPOSITION_MODULES.items()):
+            if module not in imported or here in entry_points or here == f"{module}.py":
+                continue
+            violations.append(
+                f"{here} imports {module}; only {sorted(entry_points)} may compose a pass"
+            )
     return violations
 
 
@@ -173,6 +209,59 @@ def test_no_forbidden_imports(sources: dict[Path, str]) -> None:
     violations = find_violations(sources)
 
     assert not violations, "module boundary violations:\n  " + "\n  ".join(violations)
+
+
+def test_every_composition_module_exists() -> None:
+    """`T-188` criterion 3. A rule naming a file that is not there forbids nothing, and would go
+    on passing after the module it guards was renamed."""
+    missing = sorted(name for name in COMPOSITION_MODULES if not (APP / f"{name}.py").is_file())
+
+    assert not missing, f"COMPOSITION_MODULES names modules that do not exist: {missing}"
+
+
+def test_every_entry_point_a_composition_module_names_exists() -> None:
+    """The other half of the same trap: a licence granted to a file nobody has."""
+    missing = sorted(
+        f"{module} -> {entry}"
+        for module, entry_points in COMPOSITION_MODULES.items()
+        for entry in entry_points
+        if not (APP / entry).is_file()
+    )
+
+    assert not missing, f"COMPOSITION_MODULES licenses files that do not exist: {missing}"
+
+
+def test_only_an_entry_point_imports_a_composition_module(sources: dict[Path, str]) -> None:
+    """`T-188` criterion 1. Stated as a rule rather than left to `find_cycles` to catch by
+    accident — see the note on `COMPOSITION_MODULES` for what that accident depends on."""
+    violations = composition_violations(sources)
+
+    assert not violations, "composition-module violations:\n  " + "\n  ".join(violations)
+
+
+def test_the_composition_check_can_fail() -> None:
+    """`T-188` criterion 2, on a synthetic tree so the real one stays untouched.
+
+    Both import forms, because a walk that records only `from`-modules is blind to the other and
+    this repository has been caught by that before.
+    """
+    offending = {
+        APP / "qualification" / "rules.py": "from app.worker_pass import one_pass\n",
+        APP / "prospects" / "imports.py": "import app.worker_pass\n",
+    }
+
+    assert len(composition_violations(offending)) == 2
+
+
+def test_the_composition_check_permits_the_entry_points() -> None:
+    """And does not fire on the two callers ADR-027 exists to permit, nor on the module itself."""
+    permitted = {
+        APP / "worker.py": "from app.worker_pass import one_pass\n",
+        APP / "cli.py": "from app.worker_pass import one_pass\n",
+        APP / "worker_pass.py": "from app.jobs_and_outbox.runner import run_once\n",
+    }
+
+    assert composition_violations(permitted) == []
 
 
 def test_no_import_cycles(sources: dict[Path, str]) -> None:

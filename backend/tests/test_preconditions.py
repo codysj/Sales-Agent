@@ -25,7 +25,7 @@ from app.campaigns.policy import SuppressionScope as SuppressionScopeConfig
 from app.campaigns.service import publish_policy_version
 from app.core.lifecycles import CampaignCandidateState
 from app.core.settings import Settings
-from app.drafts_and_approvals.approval import Approval, revoke
+from app.drafts_and_approvals.approval import Approval, ApprovalNotValid, revoke
 from app.drafts_and_approvals.models import MessageRevision
 from app.jobs_and_outbox.dispatch import (
     DispatchRefused,
@@ -502,13 +502,49 @@ def test_a_product_status_version_no_longer_in_force_is_refused(
     assert "product status version is no longer effective" in failure.detail
 
 
-def test_a_command_citing_no_product_status_is_not_refused_for_it(
+def test_an_unpinned_approval_cannot_even_produce_a_send_command(
     db_session: Session, world: World
 ) -> None:
-    """Not every effect makes a product claim, and §11.4 allows the field's absence."""
+    """The reverse of what this test used to assert, and the reason ADR-029 exists.
+
+    It was `test_a_command_citing_no_product_status_is_not_refused_for_it`, and read
+    *"not every effect makes a product claim, and §11.4 allows the field's absence"* — a
+    permissive reading of a safety clause that lived only in that docstring and nowhere a
+    reader would find it. §11.4 says every external action *contains*
+    `product_status_version`, and lists "product-status and approved-claim versions" among
+    the dispatch rechecks. A recheck that cannot run is not a recheck.
+
+    **The refusal lands earlier than at dispatch**, which is better than the contract
+    needs: `create_send_command` calls `require_valid_approval`, so an approval that
+    cannot prove its currency never becomes a send order at all.
+
+    Built with `pinned=False` deliberately — no production path can produce this approval
+    (`T-193a` enforces that), so the only way to reach the state is to ask for it.
+    """
+    approval = world.approval(pinned=False)
+    assert approval.product_status_version_id is None
+    assert approval.approved_claim_set_id is None
+
+    with pytest.raises(ApprovalNotValid) as refused:
+        create_send_command(
+            db_session,
+            thread=world.thread,
+            approval=approval,
+            campaign_id=world.campaign.id,
+            actor=OPERATOR,
+            record_versions={"approver_id": APPROVER},
+            now=NOW,
+        )
+
+    assert "currency checks cannot be run" in str(refused.value)
+
+
+def test_a_pinned_approval_still_produces_one(db_session: Session, world: World) -> None:
+    """The other side: a checker that refused everything would pass the test above and be
+    useless. A normally-pinned approval — what the production path builds — still works."""
     command = a_command(db_session, world)
 
-    assert command.product_status_version_id is None
+    assert command.product_status_version_id is not None
     recheck_send_command(db_session, command, now=NOW)
 
 

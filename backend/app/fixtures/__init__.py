@@ -14,3 +14,7 @@ from pathlib import Path
 #: The T-041 prospect corpus. A path rather than a parsed object: the CSV is deliberately the
 #: artifact, so the T-042 importer reads it the same way it will read an operator's file.
 PROSPECTS_CSV = Path(__file__).resolve().parent / "prospects.csv"
+
+#: The T-058 synthetic source corpus, which `FixtureSourceAdapter` reads. A path, for the same
+#: reason: the adapter walks a directory exactly as a real one would.
+SOURCE_DOCUMENTS = Path(__file__).resolve().parent / "source_documents"

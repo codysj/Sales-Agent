@@ -25,12 +25,21 @@ from app.campaigns.models import Campaign
 from app.core.logging import configure_logging
 from app.core.settings import get_settings
 from app.db.session import dispose_engines, get_engine
-from app.fixtures import PROSPECTS_CSV
+from app.fixtures import PROSPECTS_CSV, SOURCE_DOCUMENTS
+from app.fixtures.model_routing import TaskRoutingFake
 from app.fixtures.synthetic import SeedRefused, require_seedable, seed_synthetic
 from app.identity.models import Role, RoleKey, User, UserRole
 from app.intake import enqueue_memberships_for_import
 from app.job_types import register_job_types
+from app.model_gateway.registry import set_fake_adapter_factory
+from app.outreach_and_replies.adapters import build_effect_adapter
 from app.prospects.imports import import_csv
+from app.research_and_evidence.adapters.fixture import FixtureSourceAdapter
+from app.research_and_evidence.adapters.registry import (
+    FIXTURE_ADAPTER_NAME,
+    register_source_adapter,
+)
+from app.worker_pass import one_pass
 
 log = structlog.get_logger(__name__)
 
@@ -262,10 +271,70 @@ def _start_campaign(slug: str) -> int:
     return 0
 
 
+#: A bound on `run_worker`'s loop. It exists so a command a reader is told to run terminates even
+#: if a job is retrying forever; at Stage 1 volumes a full drain is a few dozen passes, so
+#: reaching this is a symptom rather than a limit, and the log line says which happened.
+MAX_DRAIN_PASSES = 2000
+
+
+def _run_worker() -> int:
+    """Drain the pipeline with the Stage 1 fakes installed (`T-172a`, ADR-027).
+
+    **The gap this closes:** `python -m app.worker` registers no source adapter and installs no
+    fake, deliberately — that is the property `tests/test_pipeline_jobs.py`'s two adapter
+    invariants protect. So every `research.capture_evidence` job dead-lettered with *"no source
+    adapter registered under 'fixture'"*, and the only place the Stage 1 fixtures were ever
+    installed was inside `tests/test_shadow_slice.py`. A reader following the walkthrough saw a
+    queue that never filled and a reason buried in a dead job.
+
+    **It drains and stops**, where the production worker loops forever. A walkthrough step that
+    ends is a step a non-engineer can complete; one that has to be interrupted is a step they have
+    to be told how to interrupt.
+
+    **Local only.** The refusal runs before anything is registered, so a refused environment does
+    not so much as have a fixture adapter resolvable in its process.
+    """
+    settings = get_settings()
+    try:
+        require_seedable(settings)
+    except SeedRefused as refusal:
+        log.error("cli.run_worker.refused", reason=str(refusal))
+        return EXIT_REFUSED
+
+    register_source_adapter(
+        FIXTURE_ADAPTER_NAME, lambda: FixtureSourceAdapter(directory=SOURCE_DOCUMENTS)
+    )
+    set_fake_adapter_factory(TaskRoutingFake)
+
+    structlog.contextvars.bind_contextvars(correlation_id=f"cli-{uuid.uuid4().hex[:12]}")
+    worker_id = f"cli-{uuid.uuid4().hex[:8]}"
+    adapter = build_effect_adapter(settings)
+    engine = get_engine(settings.database_url)
+    passes = 0
+    try:
+        while passes < MAX_DRAIN_PASSES:
+            with Session(engine) as session:
+                result = one_pass(session, worker_id=worker_id, adapter=adapter, settings=settings)
+            passes += 1
+            if result.did_nothing:
+                break
+    finally:
+        dispose_engines()
+
+    log.info(
+        "cli.run_worker.done",
+        app_env=settings.app_env.value,
+        passes=passes,
+        drained_to_idle=passes < MAX_DRAIN_PASSES,
+    )
+    return 0
+
+
 COMMANDS = {
     "seed_synthetic": _seed_synthetic,
     "import_prospects": _import_prospects,
     "grant_local_reviewer": _grant_local_reviewer,
+    "run_worker": _run_worker,
 }
 
 
@@ -287,6 +356,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     subcommands.add_parser(
         "grant_local_reviewer",
         help="Create a local reviewer who can sign in (local and test environments only).",
+    )
+    subcommands.add_parser(
+        "run_worker",
+        help="Drain the pipeline with the Stage 1 fixtures installed (local and test only).",
     )
     start = subcommands.add_parser(
         "start_campaign",

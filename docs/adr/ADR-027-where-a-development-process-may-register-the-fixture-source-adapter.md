@@ -1,8 +1,12 @@
 # ADR-027 — Where a development process may register the fixture source adapter
 
-**Status:** PROPOSED (2026-08-01, `T-174`) — **nothing here is applied.** `T-172` stays `BLOCKED`
-until this is accepted, amended, or rejected. Written as a proposal because the choice is the
-user's, not the loop's (AGENTS.md rule 10).
+**Status:** ACCEPTED (2026-08-01) — **option (b)**, decided by the user and recorded by the
+loop at their direction. Proposed 2026-08-01 by `T-174`; the choice was the user's, not the
+loop's (AGENTS.md rule 10).
+**Nothing is implemented yet.** `T-172` carries the work and is now `READY`; this record only
+fixes *which* design it implements. The amendment (b) requires — excluding `app/cli.py` from
+the two adapter walks — is part of `T-172`, not of this decision, and must land with the
+invariant docstrings updated so the rule and its enforcement still agree.
 **Corrected 2026-08-01 (`T-175`):** option (b) originally claimed to amend **no** invariant. That
 was wrong, and the correction is below rather than folded in silently, because the first version
 was written to be decided on.
