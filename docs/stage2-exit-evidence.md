@@ -223,6 +223,10 @@ changing the old one; every action asks for a reason.
 
 **This section is empty on purpose. Do not fill it in from memory.**
 
+The running sheet for the session is [stage2-rehearsal-script.md](stage2-rehearsal-script.md) —
+operator runbook, the page the reviewer is handed, and the observation sheet whose answers are
+transcribed back into this section afterwards.
+
 `T-071b` owns it, and it needs a person who is not an engineer to sit down with §0–§4 above and
 complete a review without help. What goes here:
 
