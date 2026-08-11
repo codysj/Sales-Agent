@@ -209,11 +209,13 @@ known user and refuses to run outside a local environment.
 Approving a candidate queues the drafting job; it does not run it. Re-run
 `uv run python -m app.cli run_worker` to see the drafted message appear for approval.
 
-> [!NOTE]
-> The dashboard fetches from the browser, and the API registers no CORS middleware, so
-> cross-origin requests from `localhost:3000` to `localhost:8000` are currently refused by the
-> browser. Serving both behind one origin — or adding a local-only CORS allowance to the API — is
-> needed before the walkthrough works end to end in a normal browser session.
+> [!WARNING]
+> **The walkthrough does not yet work end to end in a browser** ([`T-195`](tasks.md)). The
+> dashboard fetches from the browser and the API registers no CORS middleware, so cross-origin
+> requests from `localhost:3000` to `localhost:8000` are refused and a reviewer cannot get past
+> sign-in. The fix is to serve both behind one origin — a dev-server rewrite, rather than a CORS
+> allowance, so that the `SameSite` session cookie keeps working and the API gains no permissive
+> header path. Until then, the API is exercisable directly and the dashboard is not.
 
 ### Verification
 
@@ -274,9 +276,20 @@ under a socket guard.
 deferral, the attention queue for stale approvals, and the operations panel are implemented and
 tested.
 
-**Next: gate G-10** — a non-engineer completing reviews unaided, with no explanation of the agent
-stack. The [rehearsal running sheet](docs/stage2-rehearsal-script.md) is written; the gate turns
-on an observed session, not on another implementation task.
+**Next: `T-195`, then gate G-10.** The gate asks for a non-engineer completing reviews unaided,
+with no explanation of the agent stack, and the [rehearsal running sheet](docs/stage2-rehearsal-script.md)
+is written. One implementation task stands in front of it: the dashboard's API calls are blocked
+cross-origin, so nobody can rehearse anything yet.
+
+The gate then takes evidence from two rehearsals
+([ADR-030](docs/adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md)). An agent-team pass
+opens Stage 3 scope only; a person's observed session opens the gate in full and remains a
+precondition of live email and live outreach. The gate's words are not reinterpreted — *a
+non-engineer* means a person — but partial evidence now buys a stated, bounded amount instead of
+nothing.
+
+Recommendations for every open non-engineering decision are recorded in
+[docs/decisions/2026-08-11-recommended-actions.md](docs/decisions/2026-08-11-recommended-actions.md).
 
 Everything beyond it — real model providers, email execution, CRM sync, messaging integration,
 live outreach — sits behind its own locked gate with recorded unlock conditions. Nothing here is

@@ -52,6 +52,7 @@ leaves discretion. They live in this directory as `ADR-0NN-short-slug.md`.
 | [ADR-027](ADR-027-where-a-development-process-may-register-the-fixture-source-adapter.md) | ACCEPTED | Where a development process may register the Stage 1 fixture source adapter. Three options costed; **(b) accepted by the user 2026-08-01** and implemented by `T-172a`: the pass loop moved so the CLI can drive it, and `app/cli.py` is excluded from the two adapter walks. |
 | [ADR-028](ADR-028-a-development-seed-registers-the-prompt-schema-and-model-config-versions.md) | ACCEPTED | `seed_synthetic` registers the prompt, schema, and model-config versions a job handler resolves. Records what it does **not** solve: a deployment still has no such path (`T-185`, needs `Q-018`). |
 | [ADR-029](ADR-029-an-approval-that-cannot-prove-its-currency-does-not-authorize-a-send.md) | ACCEPTED | An approval missing either §11.4 version pin does not authorize a send: `invalidation_detail` returns `currency_unverifiable` instead of skipping the §8.4 currency checks. Reverses a permissive reading that lived only in a test docstring. |
+| [ADR-030](ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md) | ACCEPTED | **G-10** takes evidence from two rehearsals that unlock different amounts: an agent-team pass (`T-071c`) opens Stage 3 only; a non-engineer's observed session (`T-071b`) opens the gate in full and remains a G-07/G-08 precondition. The gate's own words are not reinterpreted. |
 
 ## Writing a local ADR
 

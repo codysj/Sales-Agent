@@ -1,13 +1,15 @@
 # Stage 2 exit evidence
 
 - **Recorded:** 2026-08-01
-- **Task:** `T-071a` (the walkthrough). The rehearsal is `T-071b`.
+- **Task:** `T-071a` (the walkthrough). The rehearsals are `T-071b` (human) and `T-071c` (agent
+  team) — two evidence paths that unlock different amounts, per
+  [ADR-030](adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md).
 - **Gate:** **G-10** — specification §19.6, Stage 2: *"A non-engineer completes reviews without
   understanding the agent stack."*
 - **Status: the gate is NOT evaluated here, and this document does not claim it is met.** What
   follows is a script that has been *executed*, not a rehearsal that has been *observed*. §5 below
-  is deliberately empty: no non-engineer has run this. Filling it in is `T-071b`, and until then
-  **G-10 stays LOCKED.**
+  is deliberately empty: nobody, and nothing, has run this. Filling it in is `T-071b`/`T-071c`, and
+  until then **G-10 stays LOCKED.**
 
 Every command and every number below was observed on the date above, against databases created for
 the run and dropped afterwards. Nothing is reconstructed, estimated, or copied from a test.
@@ -219,16 +221,26 @@ What a reviewer then does is read a card and choose one of the five actions §12
 approve, edit, reject, defer, or request more research. Editing creates a new revision rather than
 changing the old one; every action asks for a reason.
 
-## 5. The rehearsal (not done)
+## 5. The rehearsals (neither done)
 
-**This section is empty on purpose. Do not fill it in from memory.**
+**Both subsections are empty on purpose. Do not fill either in from memory.**
 
-The running sheet for the session is [stage2-rehearsal-script.md](stage2-rehearsal-script.md) —
-operator runbook, the page the reviewer is handed, and the observation sheet whose answers are
-transcribed back into this section afterwards.
+The running sheet is [stage2-rehearsal-script.md](stage2-rehearsal-script.md): operator runbook
+(Part A), the page the reviewer is handed (Part B), the human observation sheet (Part C), and the
+agent protocol (Part D). Answers are transcribed back into the matching subsection below.
 
-`T-071b` owns it, and it needs a person who is not an engineer to sit down with §0–§4 above and
-complete a review without help. What goes here:
+**Two paths, unlocking different amounts** —
+[ADR-030](adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md). The agent result is never
+written up as satisfying the gate's own words; "a non-engineer" means a person.
+
+> **Neither can run yet.** `T-195`: the dashboard's API calls are cross-origin and the browser
+> blocks them, so no reviewer gets past sign-in. §4 above measured pages returning `200`, which is
+> server-side rendering and not the same thing.
+
+### 5.1 The human rehearsal — `T-071b` (not done)
+
+A person who is not an engineer sits down with §0–§4 above and completes a review without help.
+**Opens G-10 in full**, and remains a precondition of **G-07** and **G-08**. What goes here:
 
 - Who did it, on what date, and their role.
 - Which steps they completed unaided, and where they stopped or asked.
@@ -239,6 +251,25 @@ complete a review without help. What goes here:
 
 `Q-005` (who may approve) is worth settling before this is scheduled, because the rehearsal will
 surface it whether or not it has been decided.
+
+### 5.2 The agent rehearsal — `T-071c` (not done)
+
+At least three LLM agents, each with fresh context, no repository access, and no channel through
+which to be coached. **Opens G-10 for Stage 3 only** — `T-080`, `T-081`, `T-083`, `T-084`, `T-085`.
+It opens no Stage 4 or Stage 5 scope and is not a G-07 or G-08 precondition. What goes here:
+
+- How many runs, on what date, and the model and harness each used.
+- Per run: which steps completed unaided, wall-clock, and every question verbatim.
+- **Only what recurred across more than one run**, listed as the findings, with the task filed for
+  each. Single-run oddities are noted and not promoted.
+- Per run, what the agent did that a person plausibly would not — the column that keeps this from
+  reading as stronger evidence than it is.
+- The Stage 3 unlock decision, who made it, and the explicit statement that the gate is otherwise
+  still **LOCKED**.
+- Confirmation that Part D's six conditions held, or which run was discarded and why.
+
+**If both have run, record where they disagreed.** That comparison is the most valuable thing the
+two-path structure produces, and ADR-030 asks for it either way.
 
 ## 6. What this run did not prove
 
