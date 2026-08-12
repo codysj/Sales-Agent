@@ -23,11 +23,13 @@ TASK SELECTION
    task to fill time.
 
 CADENCE RULES (the only thing this prompt owns besides the report)
-- The full backend suite takes ~1 hour and this loop fires every ~30 minutes. Run targeted tests
-  synchronously; when a task needs the full canonical gate (backend code, schema, or workflow
-  logic touched), start it in the background and collect the result in the same or the next
-  iteration. A task is never `DONE` on a suite you did not observe finish — park it with a
-  "Remaining work: full-suite result" line instead.
+- The full backend suite runs in about four minutes (measured 2026-08-11 across three runs: 3m40s
+  to 4m21s, 2405 passed each time; `T-197` corrected the README's stale "about an hour"), so it
+  fits comfortably inside a 30-minute iteration.
+  Run it synchronously when a task touches backend code, schema, or workflow logic. If it does
+  run long on a given day, background it and collect the result — a task is never `DONE` on a
+  suite you did not observe finish; park it with a "Remaining work: full-suite result" line and
+  resume next iteration.
 - If the database is unreachable (Docker down), verification cannot run: per process.md §5 the
   task is `PARTIAL`/`BLOCKED`, not `DONE`. Report it and stop — do not install anything, do not
   mock the database, do not mark anything done.
@@ -39,8 +41,12 @@ CADENCE RULES (the only thing this prompt owns besides the report)
   200 characters. Tests read these formats; breaking them is a red suite, not a style choice.
 
 GIT — no commit, push, branch, or PR. Uncommitted work accumulating is the checkpoint's known M1
-condition: when completed-but-uncommitted paths exceed roughly 20, file or update a `BLOCKED`
-task asking the user for a commit, as `T-194` did. The commit itself is always the user's.
+condition. **Raise it when completed tasks are unbacked, not when a path count is large** (`T-203`):
+if more than about three `DONE` tasks exist only in the working tree, file or update a `BLOCKED`
+task asking the user for a commit, as `T-194` did. Path count is a secondary signal only — the
+original rule keyed on it alone, which meant the trigger could never fire once the loop went idle,
+which is exactly when unbacked work sits longest. Check this on every iteration including `IDLE`
+ones. The commit itself is always the user's.
 
 STOP AND ASK — a gate unlock, a `Q-###` answer, a specification edit, an ADR acceptance the user
 has not given, any external write, or anything process.md §2 calls an architecture change. File

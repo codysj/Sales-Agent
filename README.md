@@ -209,13 +209,12 @@ known user and refuses to run outside a local environment.
 Approving a candidate queues the drafting job; it does not run it. Re-run
 `uv run python -m app.cli run_worker` to see the drafted message appear for approval.
 
-> [!WARNING]
-> **The walkthrough does not yet work end to end in a browser** ([`T-195`](tasks.md)). The
-> dashboard fetches from the browser and the API registers no CORS middleware, so cross-origin
-> requests from `localhost:3000` to `localhost:8000` are refused and a reviewer cannot get past
-> sign-in. The fix is to serve both behind one origin — a dev-server rewrite, rather than a CORS
-> allowance, so that the `SameSite` session cookie keeps working and the API gains no permissive
-> header path. Until then, the API is exercisable directly and the dashboard is not.
+> [!NOTE]
+> The dashboard is served on one origin with the API (`T-195`): `next.config.ts` rewrites `/api/*`
+> to `localhost:8000`, and the client fetches relative paths. That is deliberately a dev-server
+> proxy rather than a CORS allowance on the API — one origin removes the cross-origin request
+> instead of permitting it, the `SameSite` session cookie keeps working, and the API gains no
+> permissive header path. A backend test holds it to registering no CORS middleware.
 
 ### Verification
 
@@ -228,13 +227,14 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run
 And from `frontend/`:
 
 ```bash
-npm run lint && npm run typecheck && npm test
+npm audit --audit-level=high && npm run lint && npm run typecheck && npm run test && npm run build
 ```
 
-That is 2,401 backend tests and 186 dashboard tests at the time of writing. The backend suite runs
+That is 2,407 backend tests and 189 dashboard tests, measured 2026-08-11. The backend suite runs
 against a real PostgreSQL — each session creates a throwaway database and drops it afterwards —
 under a socket guard that fails the suite if anything reaches a non-database address. It takes
-about an hour; there are no mocked database semantics to make it faster, deliberately.
+about four minutes (three runs that day, 3m40s to 4m21s); there are no mocked database semantics
+to make it faster, and at that price there is no reason to want any.
 
 ## Repository layout
 
@@ -276,10 +276,10 @@ under a socket guard.
 deferral, the attention queue for stale approvals, and the operations panel are implemented and
 tested.
 
-**Next: `T-195`, then gate G-10.** The gate asks for a non-engineer completing reviews unaided,
-with no explanation of the agent stack, and the [rehearsal running sheet](docs/stage2-rehearsal-script.md)
-is written. One implementation task stands in front of it: the dashboard's API calls are blocked
-cross-origin, so nobody can rehearse anything yet.
+**Next: gate G-10.** The gate asks for a non-engineer completing reviews unaided, with no
+explanation of the agent stack, and the [rehearsal running sheet](docs/stage2-rehearsal-script.md)
+is written. `T-195` closed on 2026-08-11 — the dashboard was unusable in a browser until then, its
+API calls blocked cross-origin — so there is now something to rehearse.
 
 The gate then takes evidence from two rehearsals
 ([ADR-030](docs/adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md)). An agent-team pass

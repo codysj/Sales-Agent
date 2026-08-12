@@ -233,9 +233,11 @@ agent protocol (Part D). Answers are transcribed back into the matching subsecti
 [ADR-030](adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md). The agent result is never
 written up as satisfying the gate's own words; "a non-engineer" means a person.
 
-> **Neither can run yet.** `T-195`: the dashboard's API calls are cross-origin and the browser
-> blocks them, so no reviewer gets past sign-in. §4 above measured pages returning `200`, which is
-> server-side rendering and not the same thing.
+> **Both can now run.** `T-195` closed 2026-08-11. Until then the dashboard's API calls were
+> cross-origin and the browser blocked them, so no reviewer got past sign-in — §4 above measured
+> pages returning `200`, which is server-side rendering and not the same thing. A browser session
+> has since signed in and worked the queue: three candidate rows, a card opened complete, every
+> request same-origin, no console errors. That is the *precondition* being met, not the gate.
 
 ### 5.1 The human rehearsal — `T-071b` (not done)
 

@@ -64,7 +64,11 @@ function route(answers: Record<string, Answer>) {
   const stub = vi.fn<(url: URL | string, init?: RequestInit) => Promise<Response>>(
     (url, init) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      const path = new URL(String(url)).pathname;
+      // The client fetches relative paths so every request stays same-origin (`T-195`), so there
+      // is nothing to parse — and nothing that *could* be parsed, since `new URL` needs a base.
+      // This used to call `new URL(String(url)).pathname`, which is where the old absolute-URL
+      // assumption was written down.
+      const path = String(url).split("?")[0] ?? "";
       const key = Object.keys(answers).find((each) => {
         const [wantedMethod, wantedPath] = each.split(" ");
         return wantedMethod === method && path.startsWith(String(wantedPath));

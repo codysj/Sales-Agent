@@ -13,13 +13,12 @@
     "test": "vitest run",
     "generate:api": "openapi-typescript openapi.json -o lib/api-types.ts"
   },
-  "//overrides": "T-152. next@16.2.12 is the latest stable and pins postcss to 8.4.31 and sharp to ^0.34.5, both of which carry high-severity advisories; the fix exists only in next's preview/canary line, and npm audit fix proposes next@9.3.3 — a five-major downgrade, which is worse than the advisories. These raise the two transitive packages instead, within their own major. Drop an entry once a stable next ships past it.",
+  "//overrides": "An override is a standing instruction to ignore what a dependency asked for, so each entry states the advisory it answers and the condition that retires it. Retirement is measured by REMOVING the entry and re-running npm audit, not by reasoning about version numbers (T-165). js-yaml (T-196, GHSA-5p4m-2wfm-xmqj): @redocly/openapi-core 1.34.18 pins js-yaml 4.3.0 and the advisory covers 4.0.0-4.3.0; reached only through the openapi-typescript devDependency, which generates lib/api-types.ts and ships nothing. Drop it when @redocly pins >4.3.0. The 4.x line is deliberate: 5.x exists and is a major @redocly does not declare support for, and trading a known advisory for an unknown break in the toolchain that generates the typed contract is the wrong trade. RETIRED 2026-08-11 by T-165, when next 16.2.12 -> 16.3.0 moved postcss 8.4.31 -> 8.5.23 and sharp ^0.34.5 -> ^0.35.3, both clear of their advisories: postcss (T-152), sharp (T-152), and nanoid (T-196) - the last of which existed only because the postcss override had pulled a newer postcss that carried it, an override answering an override's own side effect.",
   "overrides": {
-    "postcss": "^8.5.25",
-    "sharp": "^0.35.3"
+    "js-yaml": "^4.3.1"
   },
   "dependencies": {
-    "next": "^16.2.12",
+    "next": "^16.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

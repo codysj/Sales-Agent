@@ -115,6 +115,77 @@ describe("only the API client reaches the network", () => {
     }
   });
 
+  it("fetches only relative paths, so every request is same-origin", () => {
+    // `T-195` criterion 2. The client used to fetch `new URL(path, apiBaseUrl)` — an absolute
+    // `http://localhost:8000` from a page served on `:3000`, which the browser refuses because
+    // the API sets no CORS headers. Nothing caught it: the component tests stub `fetch`, and the
+    // exit-evidence run measured server-side rendering, where there is no browser to object. So
+    // the check is on the source, and it fails on the shape that broke rather than on a symptom.
+    const source = readFileSync(join(ROOT, NETWORK_OWNER), "utf8");
+    const targets = [...source.matchAll(/\bfetch\(\s*([^,]+),/g)].map((match) =>
+      match[1]?.trim(),
+    );
+
+    // Guard on the guard: a regex that matched nothing would pass this silently.
+    expect(targets.length).toBeGreaterThanOrEqual(10);
+
+    for (const target of targets) {
+      // A relative literal, a template literal starting with one, or `path` — the one variable
+      // holding a request path, asserted to be relative by the next test.
+      expect(target).toMatch(/^(["`]\/|path$)/);
+    }
+  });
+
+  it("builds its one computed request path relatively too", () => {
+    // `decide()` passes a variable, so the check above cannot see its value.
+    const source = readFileSync(join(ROOT, NETWORK_OWNER), "utf8");
+
+    expect(source).toMatch(/const path = `\/api\//);
+  });
+
+  it("constructs no URL object outside the local-host check", () => {
+    // The tripwire on the regression itself. `new URL(relative)` throws without a base, so the
+    // way this defect comes back is somebody reintroducing `new URL(path, apiBaseUrl)` to fix
+    // that throw — which silently restores absolute, cross-origin requests. The only permitted
+    // `new URL` is `assertLocal`'s parse of the proxy target, which never reaches the browser.
+    const source = readFileSync(join(ROOT, NETWORK_OWNER), "utf8");
+
+    expect(source.match(/new URL\(/g)).toHaveLength(1);
+    expect(source).toMatch(/parsed = new URL\(rawUrl\);/);
+  });
+
+  it("rewrites the paths those relative fetches depend on", async () => {
+    // `T-200`. The other half of `T-195`'s contract, and the half that actually carries the
+    // request. Relative paths are only same-origin *and useful* because `next.config.ts` proxies
+    // them to the backend; delete that block and every test above still passes, the build still
+    // succeeds, and every fetch quietly 404s against the Next server. No scan of `lib/api.ts`
+    // can see it, because that half stays correct.
+    const config = (await import("../next.config")).default;
+
+    expect(typeof config.rewrites).toBe("function");
+    const rules = (await config.rewrites!()) as Array<{ source: string; destination: string }>;
+    const sources = (Array.isArray(rules) ? rules : []).map((rule) => rule.source);
+
+    // `/api/:path*` carries every authenticated call; the health routes are not under `/api`
+    // and would be missed by a rule that only covered it.
+    expect(sources).toContain("/api/:path*");
+    expect(sources).toContain("/healthz");
+    expect(sources).toContain("/readyz");
+  });
+
+  it("sends those rewrites only to a local backend", async () => {
+    // `T-200` criterion 2. The rewrite is the one place in the repository that names a backend
+    // address, so it is the one place a remote one could be introduced without touching the
+    // module `assertLocal` guards.
+    const config = (await import("../next.config")).default;
+    const rules = (await config.rewrites!()) as Array<{ source: string; destination: string }>;
+
+    expect((Array.isArray(rules) ? rules : []).length).toBeGreaterThan(0);
+    for (const rule of Array.isArray(rules) ? rules : []) {
+      expect(new URL(rule.destination).hostname).toBe("localhost");
+    }
+  });
+
   it("declares no dependency whose purpose is fetching", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;

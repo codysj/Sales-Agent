@@ -339,6 +339,34 @@ def test_the_right_token_matches() -> None:
     assert csrf_token_matches(token, csrf_token_for(token))
 
 
+def test_the_application_registers_no_cors_middleware() -> None:
+    """`T-195` criterion 4 — the other half of the same-origin fix, held from this side.
+
+    The dashboard's requests were cross-origin and the browser refused them. There were two ways
+    out: proxy the dashboard so the requests are same-origin, or permit the crossing with CORS
+    headers here. `T-195` took the first, and this is what stops the second arriving later as a
+    quick fix for a symptom nobody connects back to it.
+
+    Permitting it here would matter more than it looks. `Access-Control-Allow-Origin` is a
+    standing instruction to a browser that some other origin may read this API's responses, in a
+    service whose posture is that external effects are structurally closed — and the session
+    cookie is `SameSite` (`T-070a`), so a genuinely cross-site dashboard would then need that
+    relaxed too. The proxy needs neither.
+    """
+    registered = [middleware.cls.__name__ for middleware in create_app().user_middleware]
+
+    # Guard on the guard: an empty list would make the assertion below vacuous, and the walk
+    # reads an attribute Starlette is free to rename.
+    assert "RequestContextMiddleware" in registered, (
+        f"the middleware walk is misreading the application; it found {registered}"
+    )
+    assert "CORSMiddleware" not in registered, (
+        "the API registers CORS middleware. T-195 made the dashboard same-origin through a "
+        "next.config.ts rewrite precisely so this would not be needed; if a real deployment now "
+        "needs a cross-origin dashboard, that is a task and an ADR, not a middleware line."
+    )
+
+
 # --- T-070c: the actor comes from the session, never from the request -----------------------------
 #
 # §15.1 asks for "immutable actor attribution in audit events", and §12.2 for identities that are

@@ -36,6 +36,18 @@ LEDGER = REPO_ROOT / "tasks.md"
 #: thing.
 PROTOCOL = REPO_ROOT / "process.md"
 
+#: The README's §Verification, which restates the same list a **fourth** time (`T-198`). `T-191`
+#: pinned the third copy and stopped there, so this one went on drifting unread: it was missing
+#: `npm audit --audit-level=high` and `npm run build`, and said `npm test` where §2 says
+#: `npm run test`.
+#:
+#: Those are the two worst omissions available. `npm audit` is the only check whose result changes
+#: with nobody editing the repository — it went red on its own and became `T-196` — and
+#: `npm run build` is what catches a production-build-only failure the dev server hides. A
+#: contributor following the README ran neither, was told the gate was green, and pushed into a CI
+#: that disagreed. It is also the copy read by people who have read nothing else.
+README = REPO_ROOT / "README.md"
+
 #: Actions this workflow is permitted to call. An action is third-party code running with the
 #: checkout in scope; a new one is a deliberate decision, not a diff nobody reads.
 ALLOWED_ACTIONS = frozenset({"actions/checkout", "astral-sh/setup-uv", "actions/setup-node"})
@@ -198,6 +210,50 @@ def test_the_protocol_names_every_canonical_command() -> None:
     missing = [command for command in canonical_commands() if command not in section]
 
     assert not missing, f"process.md §5 does not name: {missing}"
+
+
+def readme_verification_section() -> str:
+    """`README.md` §Verification, where a contributor is told what to run before pushing."""
+    text = README.read_text(encoding="utf-8")
+    assert "### Verification" in text, "README.md no longer has a Verification section"
+    # `"\n## "` stops at the next top-level heading and cannot match the `### Verification`
+    # heading itself — the third `#` is not the space the pattern needs. Same bound as §5 above.
+    return text.split("### Verification")[1].split("\n## ")[0]
+
+
+def test_the_readme_names_every_canonical_command() -> None:
+    """`T-198`, and the same one-directional check as `process.md` §5 above.
+
+    One direction on purpose: the README may legitimately show commands §2 does not — the quick
+    start runs migrations and the CLI — and asserting the converse would make every new example a
+    ledger edit. What must not happen is the README telling a reader that *fewer* checks than the
+    canonical list constitute the gate, which is exactly what it had been doing.
+    """
+    section = readme_verification_section()
+    missing = [command for command in canonical_commands() if command not in section]
+
+    assert not missing, (
+        f"README.md's Verification section does not name: {missing}. It is the fourth copy of the "
+        f"§2 list and the one a new contributor reads first; a gate stated short there is a gate "
+        f"nobody runs."
+    )
+
+
+def test_the_readme_does_not_abbreviate_npm_run_test() -> None:
+    """The drift that is invisible to the check above.
+
+    `npm test` and `npm run test` invoke the same script, so a README saying `npm test` passes a
+    substring scan for... nothing, since `npm run test` is what §2 names — it fails. But the
+    reverse is the trap: were the canonical list ever written as `npm test`, the scan would accept
+    a README saying `npm run test` and vice versa is not symmetric. Pinning the exact spelling
+    keeps the four copies literally identical, which is the property that makes them comparable at
+    a glance.
+    """
+    section = readme_verification_section()
+
+    assert not re.search(r"\bnpm test\b", section), (
+        "README.md says `npm test`; §2, CI, and process.md all say `npm run test`"
+    )
 
 
 def test_the_dashboard_runs_its_own_canonical_commands(workflow: dict[str, Any]) -> None:

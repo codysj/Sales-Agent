@@ -9,12 +9,27 @@ import type { paths } from "./api-types";
  * committed types still match the document. A hand-written interface here would look identical
  * and drift silently, which is the failure §23's typed-contract requirement exists to prevent.
  *
- * **The base URL is local, and refused if it is not.** Stage 2 is local development; the
- * dashboard has no deployed backend to talk to and §2 item 14 forbids reaching one merely
- * because the code path exists. `assertLocal` fails closed at module load rather than at the
- * first request, so a misconfigured environment is a startup error rather than a page that half
- * works. The day there is a real environment to point at, `T-061` and the deployment task relax
- * this deliberately — which is the point of it being one named function.
+ * **Every request is a relative path, so the dashboard only ever talks to its own origin**
+ * (`T-195`). It used to build absolute `http://localhost:8000` URLs, which made every call
+ * cross-origin from the page's `localhost:3000`. The API registers no CORS middleware, so the
+ * browser refused all of them and a reviewer could not get past sign-in. Nothing caught it
+ * because the component tests stub `fetch`, and the `T-071a` exit-evidence run measured pages
+ * *rendering* — which happens on the server, where this same code runs with no browser to object.
+ *
+ * **The fix is one origin, not permission to cross one.** `next.config.ts` rewrites `/api/*` and
+ * the health routes to the backend, so what the browser issues is same-origin and the proxying is
+ * the dev server's business. Adding `Access-Control-Allow-Origin` to the API would also have
+ * worked and is worse: it puts a permissive header path into a service whose entire posture is
+ * that external effects are structurally closed, and `SameSite` session cookies (`T-070a`) are
+ * not sent cross-site regardless — so that route argues toward weakening the control that exists
+ * to stop CSRF.
+ *
+ * **`apiBaseUrl` is therefore the proxy *target*, not a request prefix.** `next.config.ts` reads
+ * it on the server; nothing in the browser does. `assertLocal` still fails closed at module load
+ * — Stage 2 has no deployed backend to talk to, and §2 item 14 forbids reaching one merely
+ * because the code path exists — so a misconfigured environment is still a startup error rather
+ * than a page that half works. The day there is a real environment to point at, `T-061` and the
+ * deployment task relax this deliberately, which is the point of it being one named function.
  */
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -53,7 +68,7 @@ type Liveness =
  * client for one would be inventing the contract it is supposed to be generated from.
  */
 export async function getLiveness(signal?: AbortSignal): Promise<Liveness> {
-  const response = await fetch(new URL("/healthz", apiBaseUrl), {
+  const response = await fetch("/healthz", {
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json" },
   });
@@ -81,7 +96,7 @@ export async function getCandidateDetail(
   token: string,
   signal?: AbortSignal,
 ): Promise<CandidateDetail> {
-  const response = await fetch(new URL(`/api/review/candidates/${candidateId}`, apiBaseUrl), {
+  const response = await fetch(`/api/review/candidates/${candidateId}`, {
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -148,7 +163,7 @@ export type SessionInfo =
  * saying why, rather than a session.
  */
 export async function signIn(email: string, signal?: AbortSignal): Promise<SessionInfo> {
-  const response = await fetch(new URL("/api/auth/stub-sign-in", apiBaseUrl), {
+  const response = await fetch("/api/auth/stub-sign-in", {
     method: "POST",
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", "content-type": "application/json" },
@@ -162,7 +177,7 @@ export async function signIn(email: string, signal?: AbortSignal): Promise<Sessi
 
 /** The session ``token`` names, or `null` if the backend no longer honours it. */
 export async function getSession(token: string, signal?: AbortSignal): Promise<SessionInfo | null> {
-  const response = await fetch(new URL("/api/auth/session", apiBaseUrl), {
+  const response = await fetch("/api/auth/session", {
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -180,7 +195,7 @@ export async function getSession(token: string, signal?: AbortSignal): Promise<S
 /** End the session ``token`` names. Signing out of a session the backend already dropped is not
  * an error — `T-151a` answers `204` — so this resolves either way. */
 export async function signOut(token: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(new URL("/api/auth/session", apiBaseUrl), {
+  const response = await fetch("/api/auth/session", {
     method: "DELETE",
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
@@ -209,7 +224,7 @@ export async function editRevision(
   signal?: AbortSignal,
 ): Promise<EditResponse> {
   const response = await fetch(
-    new URL(`/api/review/revisions/${revisionId}/edit`, apiBaseUrl),
+    `/api/review/revisions/${revisionId}/edit`,
     {
       method: "POST",
       ...(signal ? { signal } : {}),
@@ -250,7 +265,7 @@ export async function approveCandidate(
   signal?: AbortSignal,
 ): Promise<ApproveResponse> {
   const response = await fetch(
-    new URL(`/api/review/candidates/${candidateId}/approve`, apiBaseUrl),
+    `/api/review/candidates/${candidateId}/approve`,
     {
       method: "POST",
       ...(signal ? { signal } : {}),
@@ -291,7 +306,7 @@ export async function listCandidateQueue(
   token: string,
   signal?: AbortSignal,
 ): Promise<CandidatePage> {
-  const response = await fetch(new URL("/api/review/candidates", apiBaseUrl), {
+  const response = await fetch("/api/review/candidates", {
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -306,7 +321,7 @@ export async function listRevisionQueue(
   token: string,
   signal?: AbortSignal,
 ): Promise<RevisionPage> {
-  const response = await fetch(new URL("/api/review/revisions", apiBaseUrl), {
+  const response = await fetch("/api/review/revisions", {
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -337,7 +352,7 @@ export async function getOperationsOverview(
   token: string,
   signal?: AbortSignal,
 ): Promise<OperationsOverview> {
-  const response = await fetch(new URL("/api/operations/overview", apiBaseUrl), {
+  const response = await fetch("/api/operations/overview", {
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -360,7 +375,7 @@ export async function setOperationalFlag(
   token: string,
   signal?: AbortSignal,
 ): Promise<FlagChangeResponse> {
-  const response = await fetch(new URL(`/api/operations/flags/${key}`, apiBaseUrl), {
+  const response = await fetch(`/api/operations/flags/${key}`, {
     method: "POST",
     ...(signal ? { signal } : {}),
     headers: {
@@ -393,7 +408,7 @@ export async function listStaleApprovals(
   token: string,
   signal?: AbortSignal,
 ): Promise<AttentionRow[]> {
-  const response = await fetch(new URL("/api/review/attention/approvals", apiBaseUrl), {
+  const response = await fetch("/api/review/attention/approvals", {
     ...(signal ? { signal } : {}),
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -422,7 +437,7 @@ export async function revokeApproval(
   token: string,
   signal?: AbortSignal,
 ): Promise<RevokeApprovalResponse> {
-  const response = await fetch(new URL(`/api/review/approvals/${approvalId}/revoke`, apiBaseUrl), {
+  const response = await fetch(`/api/review/approvals/${approvalId}/revoke`, {
     method: "POST",
     ...(signal ? { signal } : {}),
     headers: {
@@ -459,7 +474,7 @@ async function decide<Body>(
   signal?: AbortSignal,
 ): Promise<DecisionResponse> {
   const path = `/api/review/candidates/${candidateId}/${action}`;
-  const response = await fetch(new URL(path, apiBaseUrl), {
+  const response = await fetch(path, {
     method: "POST",
     ...(signal ? { signal } : {}),
     headers: {

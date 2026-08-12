@@ -221,6 +221,73 @@ def test_a_status_quoted_in_prose_is_not_read_as_the_blocks_own() -> None:
     assert status_of(undeclared) is None
 
 
+#: How a task block records what is stopping it. Anchored to the bullet *label*, for the same
+#: reason `STATUS_ON_ITS_OWN_LINE` is: task blocks routinely discuss other tasks' blockers in
+#: prose, and a loose match would read one of those as the block's own.
+BLOCKER_LINE = re.compile(r"^- \*\*Blocker / Q:\*\*", re.MULTILINE)
+
+
+def test_every_blocked_task_declares_a_blocker_the_census_can_read() -> None:
+    """`T-199`. The `Status` half of this guarantee is `T-179`'s; this is the other half.
+
+    Every idle iteration of the loop enumerates the `BLOCKED` tasks and re-checks that each still
+    waits on something real — a blocker that has quietly cleared is work nobody can see is
+    available. That audit reads this label. A block that states its blocker in prose instead is
+    therefore never re-checked, and reads to the scan as having no blocker at all.
+
+    It is not hypothetical: `T-071c` was written as `**Blocker / Q — the approval question…**`,
+    an em-dash continuation rather than the label, and the audit that found it duly reported
+    *"(no Blocker / Q line)"* for the single task this repository is waiting on.
+
+    Only `BLOCKED` tasks are required to carry it. A `DONE` or `READY` block naming no blocker is
+    saying the true thing.
+    """
+    missing = [
+        task_id
+        for task_id, block in task_blocks()
+        if status_of(block) == "BLOCKED" and not BLOCKER_LINE.search(block)
+    ]
+
+    assert not missing, (
+        f"{missing} are BLOCKED but declare no `- **Blocker / Q:**` line; the blocker census "
+        f"cannot see them, so nobody will ever re-check whether they are still blocked"
+    )
+
+
+def test_the_blocker_scan_is_not_vacuous() -> None:
+    """The guard on the guard. If nothing is `BLOCKED`, or the label were renamed, the check
+    above passes while proving nothing — which is the failure mode it exists to prevent."""
+    blocked = [task_id for task_id, block in task_blocks() if status_of(block) == "BLOCKED"]
+    found = [
+        task_id
+        for task_id, block in task_blocks()
+        if status_of(block) == "BLOCKED" and BLOCKER_LINE.search(block)
+    ]
+
+    assert blocked, "no task is BLOCKED; the check above is vacuous and should be reconsidered"
+    assert found == blocked
+
+
+def test_a_blocker_named_in_prose_is_not_read_as_the_blocks_own() -> None:
+    """The anchor earns its keep here exactly as it does for `Status`: this ledger's blocked
+    tasks quote each other's blockers constantly."""
+    labelled = (
+        "#### T-999 — A blocked task\n"
+        "- **Stage / Priority:** 2 / P2\n"
+        "- **Status:** `BLOCKED`\n"
+        "- **Blocker / Q:** `Q-004` has chosen no mailbox.\n"
+    )
+    prose_only = (
+        "#### T-998 — A blocked task whose blocker is a sentence\n"
+        "- **Stage / Priority:** 2 / P2\n"
+        "- **Status:** `BLOCKED`\n"
+        "- **Blocker / Q — the approval question.** Discussed at length below.\n"
+    )
+
+    assert BLOCKER_LINE.search(labelled)
+    assert not BLOCKER_LINE.search(prose_only)
+
+
 def test_the_stage_description_quotes_no_test_count() -> None:
     """`T-176` criterion 1. The drift class, not the instance: numbers here go stale silently."""
     found = TEST_COUNT.findall(header_row(STAGE_ROW))
