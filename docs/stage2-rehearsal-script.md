@@ -217,6 +217,18 @@ fails them produces a document indistinguishable from a real one.
 
 ### D.2 — Operator setup
 
+> [!IMPORTANT]
+> **This run must use a throwaway database, created for it and dropped afterwards.** That is a
+> condition of the permission that lets an agent approve at all
+> ([ADR-030](adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md)), not a tidiness preference.
+> The agent will approve a candidate, which writes an `Approval` row attributed to the reviewer
+> account; a database that does not survive the rehearsal cannot leave agent-made approvals sitting
+> in one an audit would later read. Point `DATABASE_URL` at a fresh database before Part A, and drop
+> it when you have transcribed the results.
+>
+> The second condition is §D.4's: **§5.2 of the exit evidence must state that the approvals were
+> agent-made.** A run missing either condition falls outside the permission and does not count.
+
 Part A, unchanged, plus:
 
 - Confirm the review queue renders rows **in a browser**, not just that the pages return `200`
@@ -278,6 +290,17 @@ Only what appears in **more than one** run is a finding. Single-run oddities go 
 precondition.
 
 **Granted / Not granted:** __________ **Decided by:** __________ **Date:** __________
+
+### D.5 — The two conditions of the permission
+
+Both must be recorded, and both are conditions rather than preferences
+([ADR-030](adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md)).
+
+- **The database this run used has been dropped.** Name it, and confirm: ____________________
+- **§5.2 states the approvals in this run were agent-made.** ☐
+
+A run that kept its database, or evidence that does not say the approvals were agent-made, falls
+outside the permission and does not count as a rehearsal.
 
 **Still required for the full gate:** the Part C human rehearsal (`T-071b`), before any Stage 4
 work begins.

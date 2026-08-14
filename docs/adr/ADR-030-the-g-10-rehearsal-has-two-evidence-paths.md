@@ -2,8 +2,9 @@
 
 **Status:** ACCEPTED (2026-08-11, `T-071c`) — the two-path structure was directed by the user in
 session; the loop wrote the boundary between the paths and would not have accepted a single-path
-reading for itself.
-**Spec:** §19.6 Stage 2 exit gate, §3.5, §12.3
+reading for itself. **Amended 2026-08-11** with §"The approval question", below: the user decided
+that an agent may perform an approval during the rehearsal, under two conditions.
+**Spec:** §19.6 Stage 2 exit gate, §3.5, §12.3, §11.3
 
 ## The problem
 
@@ -112,6 +113,44 @@ result would look identical to a real one.
   rejected only because it is untrue to what the evidence establishes. Multi-run agent evidence
   about whether an interface is self-explanatory is real evidence; recording it as worthless would
   be as inaccurate as recording it as sufficient.
+
+## The approval question (amendment, 2026-08-11)
+
+This record originally did not consider what the rehearsal actually asks its subject to *do*. The
+preflight that would have started `T-071c` found it: Part B step 2 says "for at least one, decide
+**yes**", and half the gate is reviewing the message that approval produces. So running the agent
+path means **an agent performing an approval in the dashboard**, which writes an `Approval` row and
+an audit event — and `tasks.md` §5 lists *"any model or agent approving or executing an action"*
+under prohibited starts as **REJECTED**, with `AGENTS.md` rule 5 saying the same.
+
+The loop stopped and asked rather than reading its own two-path structure as permission. **The user
+decided 2026-08-11: permitted, under two conditions.**
+
+### What was decided, and the distinction it rests on
+
+Two different things wear the same words, and only one of them is what §3.5 and §6.3 prohibit.
+
+| | Status |
+|---|---|
+| An agent **wired into the system** as an approval or execution authority — holding credentials, holding a tool that approves, or being the thing the application asks | **REJECTED, permanently.** Unchanged by this amendment. §3.5's invariant is *"zero external execution authority held only by the agent runtime"*, and that is exactly this. |
+| An agent **operating the dashboard as a test subject**, in shadow mode, driving a browser with no credential and no tool surface, exactly as a person would | **Permitted for `T-071c`**, under the two conditions below. |
+
+The architectural invariant was never at risk in the second case: the agent holds nothing, decides
+nothing the application asks it to decide, and every external effect stays closed by **G-07**. What
+*was* genuinely at risk is narrower and is what the conditions address.
+
+### The two conditions
+
+1. **A throwaway database, dropped afterwards.** The real objection was never architectural: it was
+   that the run writes approval records attributed to a reviewer account, which no human made, into
+   the same table as genuine ones, unmarked. A database that does not survive the rehearsal cannot
+   contaminate any record an audit would later read.
+2. **The evidence says the approvals were agent-made.** `docs/stage2-exit-evidence.md` §5.2 records
+   it explicitly, so no future reader can mistake the run for a human one.
+
+Together these keep the invariant that was never in danger and close the record-integrity gap that
+was. `tasks.md` §5 carries the same distinction so the prohibition list cannot be read as forbidding
+this, or as permitting the first row of that table.
 
 ## Revisit when
 

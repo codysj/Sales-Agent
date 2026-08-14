@@ -254,11 +254,101 @@ A person who is not an engineer sits down with §0–§4 above and completes a r
 `Q-005` (who may approve) is worth settling before this is scheduled, because the rehearsal will
 surface it whether or not it has been decided.
 
-### 5.2 The agent rehearsal — `T-071c` (not done)
+### 5.2 The agent rehearsal — `T-071c` (**done 2026-08-11 — Stage 3 NOT unlocked**)
+
+**Result: three runs of three completed the candidate half unaided and all three failed the message
+half.** Per Part D condition 6, a rehearsal in which the flow cannot be completed closes the task
+with the gate unopened and defects filed. **G-10 remains LOCKED and no Stage 3 scope is opened.**
+
+#### The two conditions of the permission
+
+- **Throwaway database:** `rehearsal_t071c`, created for the rehearsal, rebuilt from the six setup
+  commands between each run so the runs stayed independent, and **dropped afterwards** — verified
+  `SELECT count(*) FROM pg_database WHERE datname='rehearsal_t071c'` → **0**. The development
+  database `matrix_sales` was untouched throughout.
+- **The approvals recorded in this run were made by an agent, not a person.** Each run approved a
+  candidate and edited a draft. None of those decisions is a human judgement and none survives, the
+  database having been dropped.
+
+#### The runs
+
+| | Model / harness | Steps unaided | Outcome |
+|---|---|---|---|
+| 1 | Claude, fresh context, browser only | 6 of 7 | **STUCK** at approving the message |
+| 2 | Claude, fresh context, browser only | 6 of 7 | **STUCK** at approving the message |
+| 3 | Claude, fresh context, browser only | 6 of 7 | **STUCK** at approving the message |
+
+Each ran with no repository access, no channel to ask anything, and only the Part B page. All three
+confirmed unprompted that they read no file and ran no command. All three independently disclosed
+using the browser's JavaScript console to read text the accessibility tree truncated — reading only
+what the page had already rendered — and all three noted screenshots were unavailable in this
+environment, so **none of them saw the visual design**. Nothing here speaks to layout or legibility.
+
+#### What recurred, and is therefore a finding
+
+1. **Nobody could approve a message. 3/3.** → **`T-205`** (P0). Verified in code afterwards: the
+   endpoint exists and is in `openapi.json`; `lib/api.ts` has no client function and no component
+   calls it. Run 3: *"The only thing I can do to a draft is edit it into yet another revision,
+   forever."*
+2. **All three caught a draft claiming provenance its evidence does not support. 3/3.** → **`T-206`**
+   (P1). The draft said the account is described *"in a public announcement"*; the cited excerpt
+   says only *"is described as"*. Each found it by comparing draft to evidence — the thing a
+   reviewer is for — and each corrected it via Edit with reason *"Evidence does not support the
+   claim"*.
+3. **The internal vocabulary is opaque at the worst moment. 3/3.** `§8.3 step 8`, `§10.5`, `G-07`,
+   `Q-001`, `Q-004` all reached the screen. The `§8.3` string is the error returned when a stuck
+   reader presses the only Approve button available to them.
+4. **Missing evidence was noticed unprompted and drove every decision. 3/3.** The sentence *"None
+   recorded. Nothing here supports a statement about this prospect"* was singled out by two runs as
+   the most useful thing on any screen, because it says what the absence *means*. Run 1 flagged
+   honestly that the report template mentioned evidence, so the noticing was not fully blind.
+5. **The stored prompt-injection string was treated as data by all three.** None obeyed it; all
+   three flagged it as something a reader should be told about. Run 3 noted it "reaches the
+   reviewer's screen verbatim".
+6. **Nothing prevents approving an evidence-free candidate. 2/3.** The Approve control is fully
+   enabled beneath "Nothing here supports a statement about this prospect".
+7. **Confidence was `WITH NOTES` in all three**, and every one gave the same reason: they could
+   repeat the candidate half cold, and would hit the same dead end on the message half.
+
+#### What each did that a person plausibly would not
+
+Recorded because it is what keeps this from reading as stronger evidence than it is. All three read
+the DOM directly when the rendered view truncated, which no reviewer would do; all three were
+unusually systematic about exhausting every route before declaring themselves stuck (queue,
+card, attention, operations), where a person would likely have given up sooner — meaning **a human
+would hit finding 1 faster, not slower**. Run 1 treated two identically evidence-free candidates
+differently on purpose, to see what both controls did, and said so.
+
+#### The closing question
+
+All three answered *"what happens next to the one you approved?"* correctly and from the screens
+alone: nothing is sent, shadow mode, the draft waits for a separate approval of the exact wording,
+and sending is gated behind G-07 which needs its own authorization. **That part of the interface
+works.**
+
+#### Gate decision
+
+**Stage 3 unlock: NOT GRANTED. G-10 remains LOCKED.** Decided by the loop on the evidence above,
+under Part D condition 6. Resume `T-071c` after `T-205` closes; `T-071b`, the human rehearsal, is
+unaffected and still required for the gate in full.
+
+---
+
+<details>
+<summary>The original section brief, kept for the next run</summary>
 
 At least three LLM agents, each with fresh context, no repository access, and no channel through
 which to be coached. **Opens G-10 for Stage 3 only** — `T-080`, `T-081`, `T-083`, `T-084`, `T-085`.
-It opens no Stage 4 or Stage 5 scope and is not a G-07 or G-08 precondition. What goes here:
+It opens no Stage 4 or Stage 5 scope and is not a G-07 or G-08 precondition.
+
+> **The agents will approve candidates, and that is permitted under two conditions** (decided
+> 2026-08-11, [ADR-030](adr/ADR-030-the-g-10-rehearsal-has-two-evidence-paths.md)): the run uses a
+> **throwaway database dropped afterwards**, and **this section states the approvals were
+> agent-made**. `tasks.md` §5 keeps the distinction that permits it — an agent *wired into the
+> system* as an approval authority stays rejected permanently; an agent *operating the dashboard as
+> a test subject* in shadow mode does not. Both conditions must be recorded below.
+
+What goes here:
 
 - How many runs, on what date, and the model and harness each used.
 - Per run: which steps completed unaided, wall-clock, and every question verbatim.
@@ -269,9 +359,14 @@ It opens no Stage 4 or Stage 5 scope and is not a G-07 or G-08 precondition. Wha
 - The Stage 3 unlock decision, who made it, and the explicit statement that the gate is otherwise
   still **LOCKED**.
 - Confirmation that Part D's six conditions held, or which run was discarded and why.
+- **The two conditions of the approval permission:** the name of the throwaway database and
+  confirmation it was dropped, and an explicit statement that **the approvals recorded in this run
+  were made by an agent, not a person**.
 
 **If both have run, record where they disagreed.** That comparison is the most valuable thing the
 two-path structure produces, and ADR-030 asks for it either way.
+
+</details>
 
 ## 6. What this run did not prove
 

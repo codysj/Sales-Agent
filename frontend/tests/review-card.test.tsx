@@ -201,13 +201,21 @@ describe("shadow mode", () => {
     expect(html).toContain("G-07");
   });
 
-  it("offers all five of §12.3 item 6's actions, every one of them live", () => {
+  it("offers all six of §12.3 item 6's actions, every one of them live", () => {
     // The end of a sequence: `T-065b` wired Edit, `T-154b` Approve, `T-066b2` Reject and Defer,
-    // and `T-155` Request-more-research. Nothing is offered as a placeholder any more.
+    // `T-155` Request-more-research, and `T-205` **Approve these words**.
+    //
+    // Six, not five, and the sixth is the point. §12.3 item 6 names five *reviewer decisions*,
+    // but approving the candidate and approving the exact wording are two distinct approvals of
+    // two different objects (§11.3, ADR-008) — and until `T-205` only the first had a control.
+    // The endpoint, the permission, the queue entry and the generated type all existed; nothing
+    // called it. Three rehearsal readers reached the draft and had nowhere to record a decision
+    // on it (`T-071c`).
     //
     // Asserted by *label*, not by counting: the counts happened to stay 5-and-4 when Approve went
     // live, because its submit starts disabled until a recipient is chosen. A test that only
-    // counted would have kept passing while saying nothing.
+    // counted would have kept passing while saying nothing — and would have kept passing through
+    // the entire absence this task fixed.
     const html = render();
     const buttons = html.match(/<button[^>]*>[^<]*/g) ?? [];
     const labels = new Set(buttons.map((button) => button.split(">")[1]));
@@ -216,6 +224,7 @@ describe("shadow mode", () => {
       new Set([
         "Save as a new revision",
         "Approve",
+        "Approve these words",
         "Reject",
         "Defer",
         "Request more research",

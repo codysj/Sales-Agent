@@ -1,5 +1,6 @@
 import type { CandidateDetail } from "../../lib/api";
 import { ApproveForm } from "./ApproveForm";
+import { ApproveMessageForm } from "./ApproveMessageForm";
 import { DecisionForm } from "./DecisionForm";
 import { EditForm } from "./EditForm";
 
@@ -175,6 +176,11 @@ export function ReviewCard({ candidate }: { candidate: CandidateDetail }) {
 
       {/* Items 6 and 7 — rejecting and deferring, each with a §10.6 reason. */}
       <DecisionForm candidate={candidate} />
+
+      {/* Item 6 — approving the exact words, the second of the two approvals (T-205). Placed
+          before editing because approving is what a reviewer who agrees with the draft wants,
+          and editing is the exception. */}
+      <ApproveMessageForm candidate={candidate} />
 
       {/* Items 6 and 7 — editing, and the structured correction reason it requires. */}
       {candidate.current_revision !== null && <EditForm revision={candidate.current_revision} />}

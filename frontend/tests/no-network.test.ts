@@ -35,7 +35,7 @@ const NETWORK_OWNER = join("lib", "api.ts");
 const GENERATED = join("lib", "api-types.ts");
 
 /** The tests themselves name these patterns in order to look for them. */
-const TEST_FILES = ["no-network.test.ts", "api-types.test.ts"];
+const TEST_FILES = ["no-network.test.ts", "api-types.test.ts", "reachable-actions.test.ts"];
 
 function sourceFiles(): string[] {
   const found: string[] = [];

@@ -283,6 +283,51 @@ export async function approveCandidate(
   return (await response.json()) as ApproveResponse;
 }
 
+/** Approving the exact words, as `T-067a`'s endpoint accepts it. */
+export type ApproveMessageRequest =
+  paths["/api/review/revisions/{revision_id}/approve"]["post"]["requestBody"]["content"]["application/json"];
+
+export type ApproveMessageResponse =
+  paths["/api/review/revisions/{revision_id}/approve"]["post"]["responses"][200]["content"]["application/json"];
+
+/**
+ * Approve an exact message revision for an exact recipient (§11.3, ADR-008).
+ *
+ * **This is the second approval, and it is not the same act as approving the candidate.** One
+ * says this company is worth writing to; this one says *these words* may go to *this address*.
+ * The architecture splits them deliberately, and until `T-205` the dashboard offered only the
+ * first — the endpoint existed, `openapi.json` published it, and nothing called it. Three
+ * independent rehearsal readers reached the drafted message, decided on it, and found no control
+ * to record that decision (`T-071c`). The queue listed the revision as "awaiting approval" the
+ * whole time.
+ *
+ * **The recipient is named rather than derived**, for ADR-008's reason: an address the form chose
+ * is an address nobody approved. **`record_version` is sent** so the backend can refuse a revision
+ * that changed after it was read — approving text you were not shown is exactly what the pin is
+ * for, and a client that omitted it would be choosing to race.
+ */
+export async function approveRevision(
+  revisionId: string,
+  request: ApproveMessageRequest,
+  token: string,
+  signal?: AbortSignal,
+): Promise<ApproveMessageResponse> {
+  const response = await fetch(`/api/review/revisions/${revisionId}/approve`, {
+    method: "POST",
+    ...(signal ? { signal } : {}),
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw await refusal(response, `POST /api/review/revisions/${revisionId}/approve`);
+  }
+  return (await response.json()) as ApproveMessageResponse;
+}
+
 /** The candidate review queue (`T-063a`) and the revision review queue (`T-063b`). */
 export type CandidatePage =
   paths["/api/review/candidates"]["get"]["responses"][200]["content"]["application/json"];
