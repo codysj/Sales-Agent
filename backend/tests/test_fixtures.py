@@ -9,6 +9,7 @@ Three things are worth testing and one of them is not the happy path:
 The content checks run offline. Only the seeding tests need PostgreSQL.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -104,6 +105,67 @@ def test_no_fixture_string_contains_a_digit() -> None:
     offenders = [value for value in fixture_strings() if re.search(r"\d", value)]
 
     assert not offenders, f"fixture strings carrying digits: {offenders}"
+
+
+#: Words a draft fixture uses to attribute a prospect fact to a source (`T-206`). A fixture
+#: cannot cite evidence — `resolve_citations` keys evidence by its runtime UUID, which no static
+#: file can know — so a personalization naming a source is attributing a claim to something it
+#: structurally cannot point at.
+INVENTED_PROVENANCE = (
+    "announcement",
+    "listing",
+    "press release",
+    "according to",
+    "report",
+    "filing",
+)
+
+
+def draft_personalizations() -> list[tuple[str, str]]:
+    """Every `personalization` string in a model-output draft fixture, with its file name."""
+    root = Path(__file__).resolve().parents[1] / "app" / "fixtures" / "model_outputs"
+    found: list[tuple[str, str]] = []
+    for path in sorted(root.rglob("draft-*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        value = payload.get("output", {}).get("personalization")
+        if isinstance(value, str):
+            found.append((path.name, value))
+    return found
+
+
+def test_the_personalization_scan_finds_the_fixtures_it_checks() -> None:
+    # Guard on the guard: an empty scan would make the check below vacuously true.
+    found = draft_personalizations()
+
+    assert len(found) >= 2, f"the draft-fixture scan found {len(found)}; it is misreading"
+
+
+def test_no_draft_fixture_attributes_a_prospect_fact_to_a_source_it_cannot_cite() -> None:
+    """`T-206`, and the rehearsal is the reason it exists.
+
+    Both default draft fixtures said the account was described *"in a public announcement"* /
+    *"in a public listing"*. The stored excerpts said only *"is described as"*. Three independent
+    readers in `T-071c` caught it by comparing draft to evidence — the exact thing a reviewer is
+    for — and every automated check passed it, because `_check_evidence_citations` verifies that
+    cited rows resolve, not that a sentence follows from them.
+
+    The fixture could not have cited its source even if it wanted to: evidence is keyed by a
+    runtime UUID. So a default fixture naming a provenance is modelling an outbound sentence the
+    system could never support, which is the opposite of what a *default* fixture is for. An
+    adversarial one that does this deliberately belongs beside `T-057`'s injection corpus, named
+    so a reader knows it is hostile on purpose.
+    """
+    offenders = [
+        (name, word)
+        for name, value in draft_personalizations()
+        for word in INVENTED_PROVENANCE
+        if word in value.lower()
+    ]
+
+    assert not offenders, (
+        f"draft fixtures attributing a prospect fact to a source they cannot cite: {offenders}. "
+        f"A fixture cannot carry an evidence id, so this models a claim the system cannot support."
+    )
 
 
 def test_no_fixture_string_uses_claim_vocabulary_reserved_for_approved_claims() -> None:

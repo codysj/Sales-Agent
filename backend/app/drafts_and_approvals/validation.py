@@ -200,8 +200,31 @@ def _check_product_readiness(
 def _check_evidence_citations(
     session: Session, revision: MessageRevision, at: datetime
 ) -> ValidationFailure | None:
-    """Every cited evidence snapshot must still exist and not be stale (GP-02)."""
+    """Every cited evidence snapshot must still exist and not be stale (GP-02).
+
+    **This proves the citation resolves. It does not prove the sentence follows from it** — and
+    the difference is not academic. `T-071c`'s rehearsal had three independent readers compare a
+    draft against the evidence above it, and all three caught the same thing: the draft said the
+    account was described *"in a public announcement"* while the excerpt it pointed at said only
+    *"is described as"*. Three words of provenance nobody had recorded, and every automated check
+    here passed it, because every check here can ask only whether a cited row exists and is
+    fresh. Entailment — does this excerpt actually support this claim — is a model-quality
+    question (§19.3, `T-082`), not something a validator resolves against a database.
+
+    So the guarantee this file provides is narrower than "every prospect statement is supported
+    by evidence", and it is worth stating which one it is: **every cited snapshot is real and
+    current**. A reviewer reading both texts is what closes the gap, which is an argument for the
+    human in the loop rather than a gap to be embarrassed about — but only if nobody mistakes the
+    check for more than it is.
+
+    **A second, wider gap is deliberately not closed here** and is filed as `T-207`: an empty
+    citation list returns `None` below, so a draft that personalizes while citing *nothing* passes
+    this check entirely. That is a structural rule (does a prospect statement require a citation
+    at all?) rather than a question about the snapshots cited, and it wants its own decision.
+    """
     if not revision.evidence_ids:
+        # Nothing cited, nothing to verify. See `T-207` — this is also how an uncited
+        # personalization passes, which is a different defect from a stale citation.
         return None
 
     usable = {

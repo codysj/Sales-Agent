@@ -3,7 +3,7 @@
   "match": "default",
   "output": {
     "subject": "SYNTHETIC subject — depot charging build-out",
-    "personalization": "SYNTHETIC: the account is described in a public listing as operating a depot site with charging plans.",
+    "personalization": "SYNTHETIC: the account is described as operating a vehicle depot.",
     "approved_claim_ids": [
       "SYNTHETIC-CLAIM-charging-readiness"
     ],

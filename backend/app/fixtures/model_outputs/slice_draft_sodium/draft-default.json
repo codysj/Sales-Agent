@@ -3,7 +3,7 @@
   "match": "default",
   "output": {
     "subject": "SYNTHETIC subject — stationary storage evaluation",
-    "personalization": "SYNTHETIC: the account is described in a public announcement as evaluating stationary storage for site resilience.",
+    "personalization": "SYNTHETIC: the account is described as evaluating stationary storage for site resilience.",
     "approved_claim_ids": [
       "SYNTHETIC-CLAIM-sodium-readiness"
     ],

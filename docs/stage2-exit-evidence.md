@@ -368,6 +368,80 @@ two-path structure produces, and ADR-030 asks for it either way.
 
 </details>
 
+### 5.3 The second agent rehearsal — `T-071d` (**done 2026-08-14 — Stage 3 NOT unlocked**)
+
+Re-run after `T-205` (message approval had no control) and `T-206` (the draft fixtures embellished
+their evidence) closed. **The first defect is fixed and stayed fixed: no run got stuck looking for
+the approve control.** All three saw it, named it, and used or declined it deliberately.
+
+**Result: three runs of three completed the candidate half unaided. The message half is reachable
+but still cannot record the decision every reader actually made.** Stage 3 stays locked.
+
+#### The two conditions of the permission
+
+- **Throwaway database:** `rehearsal_t071d`, rebuilt from the six setup commands between each run
+  so the runs stayed independent, **dropped afterwards** — verified `0` rehearsal or verify
+  databases remain, `matrix_sales` untouched.
+- **The approvals and edits recorded in these runs were made by agents, not people.** None survives.
+
+#### The runs
+
+| | Candidate half | Message half | Decision on the wording |
+|---|---|---|---|
+| 1 | 3 of 3 unaided | reached, decided | **No** — edited to revision 3, left unapproved |
+| 2 | 3 of 3 unaided | reached, **STUCK** | **No** — 5 revisions all failed validation |
+| 3 | 3 of 3 unaided | reached, decided | **No** — edited, revision failed validation |
+
+All three ran with fresh context, no repository access, and no channel to ask anything. All three
+confirmed unprompted that they read no file and ran no command. Screenshots were unavailable again,
+so **none of them saw the visual design**; two disclosed reading the DOM where the rendered view
+truncated, and run 3 deliberately did not.
+
+#### What recurred, and is therefore a finding
+
+1. **No way to refuse wording without authoring a replacement. 3/3** → **`T-208`**. Every reader
+   decided the draft must not go out, and none could record that. The card offers *approve* or
+   *edit*; refusing means writing the replacement yourself. Run 3: *"Why is there no way to say
+   'these words should never be sent' without writing replacement copy myself?"*
+2. **A validation-failed revision vanishes from every queue, stranding an approved candidate. 2/3**
+   → **`T-209`**. Editing supersedes the only approvable revision; if the replacement fails
+   validation there is no approvable revision, no route back, and the item appears in neither
+   queue while `/attention` says *"Nothing needs attention"* — the page that exists to surface
+   exactly this. Run 2: *"the broken item is silently invisible, while the company-level approval
+   still stands."*
+3. **The card contradicts itself about whether a draft exists, and the edit form starts blank. 2/3
+   each** → **`T-210`**, with the vocabulary and dropdown findings below.
+4. **`product_statement_grounding` names no sentence. 2/3.** Run 2 burned five revisions guessing
+   which clause was ungrounded and stopped rather than keep guessing.
+5. **Nothing prevents approving an evidence-free candidate. 3/3.** Run 1: *"a passive note, not a
+   guard."* This is the same question **`T-207`** asks from the drafting side and is recorded there.
+6. **Reviewer-facing text speaks the system's language. 3/3.** `G-07`, `Q-001`, `Q-004`, `§10.5`,
+   `§10.6`, `view_operations`, `evaluation_or_pilot` all reached the screen unexplained. The
+   rejection-reason dropdown is reused verbatim for *Request more research* — **3/3** asked whether
+   their reason was being stored as a rejection.
+7. **The stored injection string was treated as data by all three**, and **3/3** noted there is no
+   way to flag bad evidence.
+8. **Missing evidence noticed unprompted and drove every decision. 3/3.** Two runs again singled
+   out *"Nothing here supports a statement about this prospect"* as the most useful sentence on the
+   screen. Runs 1 and 3 both disclosed that the report template named the topic, so the noticing
+   was not blind.
+9. **Confidence `WITH NOTES` in all three**, and unlike last time the notes are about the *message*
+   half specifically, not about a missing control.
+
+#### What each did that a person plausibly would not
+
+Two of three read the DOM directly when the rendered view truncated — run 2 noted its main finding
+was only visible that way and that *"a human reviewer would have had to scroll to find it"*. All
+three were more persistent than a person: run 2 attempted five revisions against an error message
+that named no sentence, where a person would likely have stopped at two.
+
+#### Gate decision
+
+**Stage 3 unlock: NOT GRANTED. G-10 remains LOCKED.** Second negative result, and a narrower one:
+the blocker moved from *"the decision cannot be recorded at all"* to *"one of the two decisions
+cannot be recorded, and attempting it can strand the item invisibly."* Resume at `T-208` and
+`T-209`. `T-071b`, the human rehearsal, is unaffected and still required for the gate in full.
+
 ## 6. What this run did not prove
 
 Recorded so a reader does not mistake §1–§4 for more than they are.
