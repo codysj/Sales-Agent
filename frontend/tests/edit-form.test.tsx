@@ -93,8 +93,57 @@ afterEach(() => {
 
 // --- criterion 1: submitting shows revision N+1 and marks the previous one superseded ------------
 
+describe("the form a reviewer opens", () => {
+  // `T-210` criterion 2. Two rehearsal runs of three retyped an entire message to change a
+  // sentence, and `T-209`'s dead end was reached *through* that — a reviewer rewriting from
+  // scratch produces free-form prose, which fails the grounding check.
+  it("opens containing the current subject and body", () => {
+    render(<EditForm revision={REVISION} />);
+
+    expect(screen.getByLabelText<HTMLInputElement>("Subject").value).toBe(REVISION.subject);
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Body").value).toBe(REVISION.body);
+  });
+
+  it("follows the revision it is given when a new one arrives", () => {
+    // Once the page began refetching (`T-210`), a form seeded only at mount would offer the
+    // *previous* revision's text as the base for the next edit — the same defect, arriving by way
+    // of the fix for the other one.
+    const { rerender } = render(<EditForm revision={REVISION} />);
+
+    rerender(
+      <EditForm
+        revision={{
+          ...REVISION,
+          revision_id: "99999999-9999-4999-8999-999999999999",
+          revision_number: 2,
+          subject: "SYNTHETIC replacement subject",
+          body: "SYNTHETIC replacement body.",
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText<HTMLInputElement>("Subject").value).toBe(
+      "SYNTHETIC replacement subject",
+    );
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Body").value).toBe(
+      "SYNTHETIC replacement body.",
+    );
+  });
+
+  it("keeps what the reviewer is typing while the revision has not changed", () => {
+    // The control on the sync above: re-rendering for any other reason must not throw away an
+    // edit in progress.
+    const { rerender } = render(<EditForm revision={REVISION} />);
+
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "SYNTHETIC halfway" } });
+    rerender(<EditForm revision={REVISION} />);
+
+    expect(screen.getByLabelText<HTMLInputElement>("Subject").value).toBe("SYNTHETIC halfway");
+  });
+});
+
 describe("a successful edit", () => {
-  it("shows the new revision number and says the previous one is superseded", async () => {
+  it("shows the new revision number and says the previous one cannot be approved", async () => {
     stubFetch(response());
     render(<EditForm revision={REVISION} />);
 
@@ -106,8 +155,12 @@ describe("a successful edit", () => {
     });
     const status = screen.getByRole("status").textContent ?? "";
     expect(status).toContain("Saved as revision 2");
-    expect(status).toContain("Revision 1 is superseded");
-    expect(status).toContain("can no longer be approved");
+    expect(status).toContain("Revision 1 can no longer be approved");
+    // Deliberately not "is superseded" (`T-211`): editing a *refused* revision leaves it
+    // `invalidated`, because `create_revision` does not supersede a revision that has already
+    // been retired. The outcome for a reviewer is the same and the mechanism is not, so the
+    // sentence states the outcome.
+    expect(status).not.toContain("superseded");
   });
 
   it("reports the approval the edit retired", async () => {

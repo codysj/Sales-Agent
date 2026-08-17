@@ -47,7 +47,11 @@ function whyNotApprovable(state: string): string {
     return "This revision was superseded by a later edit, so it can no longer be approved. Reload the card to see the current wording.";
   }
   if (state === "invalidated") {
-    return "This revision was invalidated — the claims or product status it relied on changed — so it cannot be approved. A new draft is needed.";
+    // Deliberately not naming a cause. It used to say "the claims or product status it relied on
+    // changed", which was the only way this happened until `T-208` made refusing wording the
+    // other — and a reviewer who had just refused these words was then told a different reason
+    // for their own decision. The attention page carries the reason; this only has the state.
+    return "This revision was invalidated, so it cannot be approved. A new draft is needed.";
   }
   if (state === "approved") {
     return "These words have already been approved.";
@@ -62,7 +66,13 @@ function describe(point: ContactPointRow): string {
   return `${point.value} (${point.type}, ${point.verification_state} — cannot be approved until it is verified)`;
 }
 
-export function ApproveMessageForm({ candidate }: { candidate: CandidateDetail }) {
+export function ApproveMessageForm({
+  candidate,
+  onChanged,
+}: {
+  candidate: CandidateDetail;
+  onChanged?: (() => void) | undefined;
+}) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "idle" });
 
@@ -98,6 +108,7 @@ export function ApproveMessageForm({ candidate }: { candidate: CandidateDetail }
         token,
       );
       setOutcome({ kind: "approved", response });
+      onChanged?.();
     } catch (error) {
       setOutcome({
         kind: "refused",
@@ -123,8 +134,9 @@ export function ApproveMessageForm({ candidate }: { candidate: CandidateDetail }
       <h2 id="approve-message">Approve these words</h2>
       <p>
         This approves the exact wording of revision {revision.revision_number} above, for the
-        address you choose. It is a separate decision from approving the company. Nothing is sent —
-        live sending is gated (G-07) and needs a separate, explicit authorization.
+        address you choose. It is a separate decision from approving the company. Nothing is sent:
+        this build cannot send email at all, and switching that on is a separate decision nobody has
+        taken (gate G-07).
       </p>
 
       {outcome.kind === "approved" ? (

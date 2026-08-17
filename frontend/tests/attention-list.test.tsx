@@ -242,7 +242,16 @@ describe("a queue with nothing stale", () => {
     render(<AttentionList rows={[]} />);
 
     expect(screen.queryByRole("list", { name: "Stale approvals" })).toBeNull();
-    expect(screen.getByText(/Nothing needs attention/)).toBeTruthy();
+    expect(screen.getByText(/No approval needs attention/)).toBeTruthy();
+  });
+
+  it("claims nothing about the rest of the page", () => {
+    // `T-209`. This used to read "Nothing needs attention" — a claim about the whole page, made
+    // by the half of it that can only see approvals. `T-071d` watched it say exactly that while a
+    // candidate's only draft could be approved by nobody.
+    render(<AttentionList rows={[]} />);
+
+    expect(screen.queryByText(/Nothing needs attention/)).toBeNull();
   });
 
   it("offers no revoke control when nothing is stale", () => {
@@ -259,7 +268,7 @@ describe("a queue with nothing stale", () => {
     revoke(row().approval_id);
 
     await waitFor(() => {
-      expect(screen.getByText(/Nothing needs attention/)).toBeTruthy();
+      expect(screen.getByText(/No approval needs attention/)).toBeTruthy();
     });
     expect(screen.queryByRole("listitem")).toBeNull();
   });

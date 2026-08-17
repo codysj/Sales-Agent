@@ -103,7 +103,7 @@ function StaleApproval({ row, onRevoked }: { row: AttentionRow; onRevoked: () =>
     if (token === null) {
       setOutcome({
         kind: "refused",
-        detail: "You are not signed in, so nothing was revoked. Sign in and try again (T-151).",
+        detail: "You are not signed in, so nothing was revoked. Sign in and try again.",
       });
       return;
     }
@@ -193,9 +193,13 @@ export function AttentionList({ rows }: { rows: readonly AttentionRow[] }) {
       </p>
 
       {remaining.length === 0 ? (
+        // Scoped to approvals, and that is `T-209`'s doing: this used to read "Nothing needs
+        // attention", which was a claim about the whole page made by the half of it that could
+        // not see the other. `T-071d` watched it say exactly that over a candidate whose only
+        // draft could be approved by nobody.
         <p>
-          Nothing needs attention. Every approval that has been granted still authorizes the send
-          it was granted for.
+          No approval needs attention. Every approval that has been granted still authorizes the
+          send it was granted for.
         </p>
       ) : (
         <ul aria-label="Stale approvals">

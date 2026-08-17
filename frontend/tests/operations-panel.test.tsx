@@ -224,14 +224,19 @@ describe("the switches", () => {
   });
 
   it("shows the backend's own refusal", async () => {
-    stubFetch({ detail: "this action requires pause_system" }, 403);
+    stubFetch(
+      { detail: "your account does not have access to this. Ask an administrator for the pause_system permission." },
+      403,
+    );
     render(panel());
 
     type("global_pause", "SYNTHETIC");
     submit("Turn on Global pause");
 
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("requires pause_system");
+      expect(screen.getByRole("alert").textContent).toContain(
+        "does not have access",
+      );
     });
   });
 

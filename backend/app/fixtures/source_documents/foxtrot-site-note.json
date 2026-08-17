@@ -1,0 +1,15 @@
+{
+  "document_id": "SYNTHETIC-DOC-foxtrot-site",
+  "account_domain": "foxtrot.example.com",
+  "source_type": "synthetic_fixture",
+  "source_quality": "medium",
+  "retention_class": "public_unrestricted",
+  "contains_personal_or_confidential_data": false,
+  "text": "SYNTHETIC EXAMPLE DOCUMENT. SYNTHETIC-Account-Foxtrot is described for development purposes only as running a placeholder processing site. Nothing in this document describes a real organization, a real project, or a real decision. Added by T-207: every candidate the shadow slice drafts for needs a stored fact behind it, because a personalized message that cites nothing is now refused.",
+  "facts": [
+    {
+      "excerpt": "SYNTHETIC: the account is described as running a single processing site.",
+      "field_or_span": "summary"
+    }
+  ]
+}

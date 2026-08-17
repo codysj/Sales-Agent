@@ -23,6 +23,7 @@ by ADR-005, which rejects automating it — and widening this to every hostname 
 """
 
 import re
+import subprocess
 from functools import cache
 from pathlib import Path
 
@@ -67,8 +68,35 @@ def is_reserved(domain: str) -> bool:
 
 @cache
 def repository_files() -> tuple[Path, ...]:
+    """Every file that could reach the remote: tracked, plus untracked and not ignored.
+
+    **Asked of git rather than of the filesystem (`T-218`).** This check's subject is the sentence
+    at the top of the file — *no real address reaches the public remote* — and the filesystem walk
+    it used to do answered a wider question: every file on this machine. Those differ by exactly
+    the ignored files, and `.gitignore` exists to hold the things that must not be published.
+    `Q-004`'s answer put the outreach mailbox in an untracked `.env` **on the user's instruction
+    that it stay out of git**, and the walk then failed the suite for it — a check reporting a
+    violation of a rule that was being followed.
+
+    `--cached --others --exclude-standard` is tracked plus untracked-but-not-ignored, which is
+    what somebody could commit next. An ignored file cannot be added without `-f`, and a file
+    unignored later shows up here the moment it is.
+
+    Deliberately **not** an exemption list. The docstring above warns against one, and it is right:
+    a file permitted to hold "explanatory" addresses is where a real one would survive. This
+    narrows *what the repository is*, and every file in it is still checked with no exceptions.
+    """
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=REPO,
+        capture_output=True,
+        check=True,
+    )
     found: list[Path] = []
-    for path in REPO.rglob("*"):
+    for name in listed.stdout.decode("utf-8").split("\0"):
+        if not name:
+            continue
+        path = REPO / name
         if any(part in NOT_THE_REPOSITORY for part in path.parts):
             continue
         if path.is_file() and path.suffix.lower() not in NOT_TEXT:
@@ -107,12 +135,37 @@ def test_every_email_address_uses_a_reserved_domain() -> None:
 def test_the_address_scan_is_not_vacuous() -> None:
     """`T-182` criterion 2 — the guard on the guard.
 
-    Two ways the check above quietly stops meaning anything: the walk stops finding files (a
-    pruned directory name that matches too much), or the pattern stops matching addresses. The
-    repository is full of legitimate reserved addresses, so both are observable.
+    Three ways the check above quietly stops meaning anything: the listing stops finding files (a
+    pruned directory name that matches too much, or a `git ls-files` that answered with nothing),
+    the pattern stops matching addresses, or — since `T-218` — the listing silently loses the
+    untracked half and stops seeing a file before anybody commits it. The repository is full of
+    legitimate reserved addresses, so all three are observable.
     """
     files = repository_files()
     reserved = [address for address in addresses() if is_reserved(address.rsplit("@", 1)[1])]
 
-    assert len(files) > 100, f"the walk found only {len(files)} files; it is pruning too much"
+    assert len(files) > 100, f"the listing found only {len(files)} files; it is pruning too much"
     assert reserved, "the scan found no email address at all; the pattern is matching nothing"
+
+    # The untracked half, demonstrated rather than assumed. A file written and not yet committed
+    # is the shape a pasted prospect address actually arrives in, and `--cached` alone would miss
+    # every one of them until they were pushed. Asserting on whatever the working tree happens to
+    # contain would pass or fail depending on when somebody last committed, so this makes the
+    # condition it needs: a new file, listed, then removed.
+    probe = REPO / "test_synthetic_data_untracked_probe.txt"
+    probe.write_text("reserved@example.invalid\n", encoding="utf-8")
+    try:
+        fresh = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=REPO,
+            capture_output=True,
+            check=True,
+        )
+        listed_now = {name for name in fresh.stdout.decode("utf-8").split("\0") if name}
+    finally:
+        probe.unlink()
+
+    assert probe.name in listed_now, (
+        "a new, uncommitted file was not listed; the scan is seeing only committed files, and an "
+        "address pasted into a new one would go unseen until it was pushed"
+    )

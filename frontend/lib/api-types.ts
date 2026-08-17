@@ -172,6 +172,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/review/attention/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Drafts nobody can approve, because a check refused them or a reviewer did
+         * @description §7.5's invalidated drafts. A read, so `requires` rather than `requires_mutation`.
+         */
+        get: operations["list_stranded_revisions_api_review_attention_revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/review/candidates": {
         parameters: {
             query?: never;
@@ -386,6 +406,31 @@ export interface paths {
          *     validation are one decision, and a half-applied edit is the state this must never leave.
          */
         post: operations["edit_revision_endpoint_api_review_revisions__revision_id__edit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/revisions/{revision_id}/refuse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refuse a revision's wording, with a reason and no replacement text
+         * @description §8.2's `review_pending -> invalidated`, with §10.6's reason attached.
+         *
+         *     `CORRECT_CANDIDATE` and not `APPROVE_MESSAGE`: this is a tier-3 correction — it stops an
+         *     external effect rather than authorizing one, and a role trusted to tidy the queue is trusted
+         *     to say "not these words". The inverse would be worse: a reviewer able to approve a message but
+         *     not to refuse it is the hole this task exists to close.
+         */
+        post: operations["refuse_message_endpoint_api_review_revisions__revision_id__refuse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -678,6 +723,12 @@ export interface components {
             state: components["schemas"]["CampaignCandidateState"];
         };
         /**
+         * Check
+         * @description The §8.3 step 10 checks, named so a failure says which one refused.
+         * @enum {string}
+         */
+        Check: "claim_citations" | "claim_currency" | "campaign_scope" | "product_readiness" | "evidence_citations" | "recipient_contactable" | "suppression" | "product_statement_grounding" | "compliance_elements" | "evidence_for_personalization";
+        /**
          * ClaimRow
          * @description One approved claim currently usable for this campaign (§10.5).
          */
@@ -933,6 +984,16 @@ export interface components {
             version: string;
         };
         /**
+         * MessageRefusalReason
+         * @description The §10.6 categories that are judgements about the message rather than the candidate.
+         *
+         *     Values match `DecisionCategory` exactly. A separate enum rather than a runtime filter over
+         *     that one, because it is the API's schema that has to refuse the other eight before a handler
+         *     runs — the same reason `RejectRequest` takes a typed category instead of validating a string.
+         * @enum {string}
+         */
+        MessageRefusalReason: "unsupported_claim" | "personalization_not_useful" | "tone_or_positioning_problem";
+        /**
          * MessageRevisionState
          * @description §8.2: draft -> validation_failed/review_pending -> approved/superseded/invalidated.
          * @enum {string}
@@ -1002,6 +1063,38 @@ export interface components {
          * @enum {string}
          */
         ReadinessCategory: "sellable_now" | "evaluation_or_pilot" | "in_development" | "strategic_or_roadmap" | "paused_or_unavailable";
+        /**
+         * RefuseMessageRequest
+         * @description Why these words must not be sent (§10.6, §12.3 item 7).
+         */
+        RefuseMessageRequest: {
+            /** Notes */
+            notes?: string | null;
+            reason: components["schemas"]["MessageRefusalReason"];
+            /** Record Version */
+            record_version?: string | null;
+        };
+        /**
+         * RefuseMessageResponse
+         * @description What the refusal recorded, and what it did not do.
+         */
+        RefuseMessageResponse: {
+            /**
+             * Message Revision Id
+             * Format: uuid
+             */
+            message_revision_id: string;
+            reason: components["schemas"]["MessageRefusalReason"];
+            /**
+             * Record Version
+             * Format: date-time
+             */
+            record_version: string;
+            /** Revision State */
+            revision_state: string;
+            /** What Happens Next */
+            what_happens_next: string;
+        };
         /**
          * RejectRequest
          * @description Why this candidate is being rejected (§10.6).
@@ -1180,6 +1273,54 @@ export interface components {
          */
         SourceType: "company_website" | "industry_directory" | "trade_show_listing" | "public_announcement" | "procurement_record" | "data_provider" | "crm_record" | "linkedin_human_provided" | "manual_entry" | "synthetic_fixture";
         /**
+         * StrandedRevisionPage
+         * @description Drafts nobody can approve, longest-waiting first.
+         */
+        StrandedRevisionPage: {
+            /** Items */
+            items: components["schemas"]["StrandedRevisionRow"][];
+        };
+        /**
+         * StrandedRevisionRow
+         * @description A candidate whose latest revision cannot be approved by anyone (§7.5).
+         */
+        StrandedRevisionRow: {
+            /** Account Name */
+            account_name: string;
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Campaign Name */
+            campaign_name: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Failures */
+            failures: components["schemas"]["ValidationFailureRow"][];
+            /**
+             * Record Version
+             * Format: date-time
+             */
+            record_version: string;
+            /** Refusal Notes */
+            refusal_notes: string | null;
+            /** Refusal Reason */
+            refusal_reason: string | null;
+            /**
+             * Revision Id
+             * Format: uuid
+             */
+            revision_id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Subject */
+            subject: string;
+        };
+        /**
          * StubSignInRequest
          * @description Who to sign in. There is no password field, and that is `§12.2` rather than an omission.
          */
@@ -1209,6 +1350,23 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * ValidationFailureRow
+         * @description One check that refuses a revision, and the identifiers that decided it (§8.3 step 10).
+         *
+         *     ``inputs`` carries IDs and classifications only — never the subject, the body, or an address.
+         *     That is `ValidationFailure`'s own §15.5 guarantee, kept by passing the dictionary through
+         *     rather than by assembling a new one here.
+         */
+        ValidationFailureRow: {
+            check: components["schemas"]["Check"];
+            /** Inputs */
+            inputs: {
+                [key: string]: string;
+            };
+            /** Reason */
+            reason: string;
         };
         /**
          * VerificationState
@@ -1460,6 +1618,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttentionPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_stranded_revisions_api_review_attention_revisions_get: {
+        parameters: {
+            query?: {
+                campaign_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                mp_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrandedRevisionPage"];
                 };
             };
             /** @description Validation Error */
@@ -1813,6 +2006,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refuse_message_endpoint_api_review_revisions__revision_id__refuse_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                revision_id: string;
+            };
+            cookie?: {
+                mp_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefuseMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefuseMessageResponse"];
                 };
             };
             /** @description Validation Error */

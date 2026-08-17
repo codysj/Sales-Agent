@@ -85,7 +85,7 @@ function Switch({
     if (token === null) {
       setOutcome({
         kind: "refused",
-        detail: "You are not signed in, so nothing was changed. Sign in and try again (T-151).",
+        detail: "You are not signed in, so nothing was changed. Sign in and try again.",
       });
       return;
     }
@@ -168,7 +168,7 @@ export function OperationsPanel({ overview }: { overview: OperationsOverview }) 
         <p role="status">
           {state.shadow_mode
             ? "Shadow mode is ON. No external effect can happen: adapters refuse to act."
-            : "Shadow mode is OFF. External effects are governed by the remaining switches and by gate G-07."}
+            : "Shadow mode is OFF. What can leave the building is decided by the switches below and by whether live sending has been authorized (gate G-07)."}
         </p>
       </section>
 
@@ -176,7 +176,8 @@ export function OperationsPanel({ overview }: { overview: OperationsOverview }) 
         <h2 id="switches">Switches</h2>
         <p>
           Every change needs a reason, in both directions. Turning a switch <em>off</em> cannot
-          enable anything configuration has not already enabled — live sending stays gated (G-07).
+          enable anything configuration has not already enabled, and email still cannot be sent
+          until that is authorized separately (gate G-07).
         </p>
         <ul aria-label="Operational switches">
           {SWITCHES.map(([key, label, effect]) => (

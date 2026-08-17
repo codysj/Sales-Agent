@@ -38,6 +38,7 @@ from app.fixtures.synthetic import (
 )
 from app.identity.models import User
 from app.model_gateway.prompts import prompt_template
+from app.model_gateway.providers.fake import SENTINEL_PREFIX, resolve_evidence_sentinels
 from app.products_and_claims.claim_models import (
     ApprovedClaim,
     ApprovedClaimSet,
@@ -107,10 +108,10 @@ def test_no_fixture_string_contains_a_digit() -> None:
     assert not offenders, f"fixture strings carrying digits: {offenders}"
 
 
-#: Words a draft fixture uses to attribute a prospect fact to a source (`T-206`). A fixture
-#: cannot cite evidence — `resolve_citations` keys evidence by its runtime UUID, which no static
-#: file can know — so a personalization naming a source is attributing a claim to something it
-#: structurally cannot point at.
+#: Words a draft fixture uses to attribute a prospect fact to a source (`T-206`). A fixture may
+#: now cite evidence — `T-207` gave it the `SYNTHETIC-EVIDENCE-N` sentinel — but what it cites is
+#: an excerpt saying *"is described as"*, and naming a public announcement or a listing asserts a
+#: provenance no stored fact carries. Citing is the mechanism; the wording is still a claim.
 INVENTED_PROVENANCE = (
     "announcement",
     "listing",
@@ -149,9 +150,11 @@ def test_no_draft_fixture_attributes_a_prospect_fact_to_a_source_it_cannot_cite(
     for — and every automated check passed it, because `_check_evidence_citations` verifies that
     cited rows resolve, not that a sentence follows from them.
 
-    The fixture could not have cited its source even if it wanted to: evidence is keyed by a
-    runtime UUID. So a default fixture naming a provenance is modelling an outbound sentence the
-    system could never support, which is the opposite of what a *default* fixture is for. An
+    When this was written the fixture could not have cited its source at all: evidence is keyed by
+    a runtime UUID. `T-207` changed that — the sentinel makes citing possible — and it does not
+    change this test, because the excerpt these fixtures now cite says *"is described as"* and
+    nothing about an announcement. A default fixture naming a provenance is still modelling an
+    outbound sentence the system cannot support, which is the opposite of what a default is for. An
     adversarial one that does this deliberately belongs beside `T-057`'s injection corpus, named
     so a reader knows it is hostile on purpose.
     """
@@ -481,6 +484,70 @@ def test_a_draft_prompt_naming_no_seeded_campaign_is_refused() -> None:
         )
 
 
+# --- T-207: a static fixture can cite evidence it cannot name -------------------------------------
+#
+# Evidence is keyed by a runtime UUID, so a file written in advance cannot name one. Once an
+# uncited prospect statement became a validation failure, that left the fake model unable to
+# produce a valid personalized draft at all — so the fixture cites a sentinel and the router
+# substitutes the ids from the prompt it was given.
+
+
+def test_the_sentinel_resolves_to_the_prompts_own_evidence_ids() -> None:
+    first = "11111111-1111-4111-8111-111111111111"
+    second = "22222222-2222-4222-8222-222222222222"
+    prompt = f"{first}: SYNTHETIC excerpt one\n{second}: SYNTHETIC excerpt two"
+
+    resolved = resolve_evidence_sentinels(
+        json.dumps({"evidence_ids": ["SYNTHETIC-EVIDENCE-2"]}), prompt
+    )
+
+    assert json.loads(resolved)["evidence_ids"] == [second]
+
+
+def test_a_sentinel_with_no_matching_evidence_resolves_to_nothing() -> None:
+    """Not an error, and the reason is `T-207`'s own rule: a candidate nobody found evidence for
+    should produce a draft that cannot be approved, which a reviewer then sees on `/attention`.
+    Raising here would dead-letter the job instead, and a dead job is the failure nobody reads."""
+    resolved = resolve_evidence_sentinels(
+        json.dumps({"evidence_ids": ["SYNTHETIC-EVIDENCE-1"]}), "no evidence in this prompt"
+    )
+
+    assert json.loads(resolved)["evidence_ids"] == []
+
+
+def test_output_without_a_sentinel_is_returned_unchanged() -> None:
+    """Every qualification fixture and every draft that cites a real id goes through this path."""
+    original = json.dumps({"evidence_ids": ["33333333-3333-4333-8333-333333333333"]})
+
+    assert resolve_evidence_sentinels(original, "irrelevant prompt") == original
+
+
+def test_the_substitution_never_reaches_the_drafting_module() -> None:
+    """`resolve_citations` must keep raising on a citation it was not given — that is what catches
+    a real model inventing an id. The sentinel is a development-only spelling, so it is resolved
+    in the fixtures package and `drafting.py` never learns about it."""
+    drafting = (
+        Path(__file__).resolve().parents[1] / "app" / "drafts_and_approvals" / "drafting.py"
+    ).read_text(encoding="utf-8")
+
+    assert SENTINEL_PREFIX not in drafting
+
+
+@pytest.mark.parametrize(
+    "directory", list(DRAFT_OUTPUTS_BY_CAMPAIGN_NAME.values()), ids=lambda path: path.name
+)
+def test_every_draft_fixture_that_personalizes_cites_evidence(directory: Path) -> None:
+    """The fixtures' own compliance with the rule. A default fixture that personalized without
+    citing would put every candidate's draft straight into `validation_failed` — which is what
+    both of them did before `T-207`."""
+    for path in directory.glob("*.json"):
+        fixture = json.loads(path.read_text(encoding="utf-8"))
+        output = fixture.get("output")
+        if not isinstance(output, dict) or not output.get("personalization", "").strip():
+            continue
+        assert output.get("evidence_ids"), f"{path.name} personalizes and cites no evidence"
+
+
 # --- T-060b: the committed OpenAPI document matches the application ------------------------------
 
 
@@ -544,6 +611,7 @@ def test_the_document_describes_the_endpoints_that_exist() -> None:
         "/api/operations/overview",
         "/api/review/approvals/{approval_id}/revoke",
         "/api/review/attention/approvals",
+        "/api/review/attention/revisions",
         "/api/review/candidates",
         "/api/review/candidates/{candidate_id}",
         "/api/review/candidates/{candidate_id}/approve",
@@ -553,6 +621,7 @@ def test_the_document_describes_the_endpoints_that_exist() -> None:
         "/api/review/revisions",
         "/api/review/revisions/{revision_id}/approve",
         "/api/review/revisions/{revision_id}/edit",
+        "/api/review/revisions/{revision_id}/refuse",
         "/healthz",
         "/readyz",
     ]

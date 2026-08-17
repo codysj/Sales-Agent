@@ -34,12 +34,14 @@ reading: nothing here imports `transition`.
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from enum import StrEnum
 from typing import Annotated, Final
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.campaigns.approval import ApprovalRefused, approve_candidate
 from app.campaigns.candidate import CampaignCandidate
@@ -55,6 +57,8 @@ from app.campaigns.models import Campaign
 from app.core.lifecycles import CampaignCandidateState, MessageRevisionState
 from app.drafts_and_approvals.editing import EditRefused, edit_revision
 from app.drafts_and_approvals.models import MessageDraft, MessageRevision
+from app.drafts_and_approvals.revisions import RefusalRefused, refuse
+from app.drafts_and_approvals.validation import Check, validate_revision
 from app.identity.dependencies import db_session, requires, requires_mutation
 from app.identity.rbac import Permission
 from app.identity.sessions import Principal
@@ -320,6 +324,168 @@ def list_revisions(
     )
 
 
+# --- §7.5's other half: drafts nobody can approve and nobody can see (T-209) ---------------------
+#
+# §7.5 asks the application to flag stale approvals **and invalidated drafts**. `T-068a` built the
+# first half. This is the second, and `T-071d` found it missing the hard way: a reviewer edits a
+# draft, the edit fails validation, and the candidate is then in *neither* list — `list_revisions`
+# defaults to `review_pending`, and the attention page listed approvals only. The candidate-level
+# approval still stands, so the work looks finished while waiting on nobody. In a live pilot that
+# is a prospect the business believes is in flight.
+#
+# **Only the latest revision counts, and the state filter is the whole of it.** A candidate whose
+# failed revision has since been edited is back in a queue and is not stranded; listing it here as
+# well would bury the ones that are. No second condition is needed to say so: `create_revision`
+# supersedes the previous revision in the same call that writes the next one (§10.5), so a
+# revision still sitting in `validation_failed` *is* the latest of its draft. A "newest revision"
+# subquery was written here first and deleted — the negative control did not bite, which is how it
+# was found, and it would also have been wrong: revision numbers are per draft, and a candidate
+# has one draft per purpose, so comparing them across drafts compares two unrelated counters.
+#
+# `T-208`'s refusals broke that reasoning, because nothing supersedes an `invalidated` revision.
+# The note left here said to add a latest-per-draft filter *the day a redraft path exists*, and
+# `T-211` is that day: a refused revision became editable, so a draft can now hold an invalidated
+# revision and a later live one at once, and without the filter the refusal would sit on this
+# page forever after the replacement was written. Correlated on `draft_id` — the earlier attempt
+# correlated on `candidate_id`, which compares revision numbers across a candidate's several
+# drafts, and those are unrelated counters.
+#
+# **The failures are recomputed, not read back.** `apply_validation` records them in the audit
+# trail, which is a record of what happened rather than a read model. Recomputing is what makes
+# them outlive the response that produced them — and it answers the question the reviewer is
+# actually asking, which is what refuses this draft *now*. Validation reads only database rows and
+# calls no model (`validation.py`), so this stays deterministic and reaches nothing external.
+
+
+class ValidationFailureRow(BaseModel):
+    """One check that refuses a revision, and the identifiers that decided it (§8.3 step 10).
+
+    ``inputs`` carries IDs and classifications only — never the subject, the body, or an address.
+    That is `ValidationFailure`'s own §15.5 guarantee, kept by passing the dictionary through
+    rather than by assembling a new one here.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    check: Check
+    reason: str
+    inputs: dict[str, str]
+
+
+class StrandedRevisionRow(BaseModel):
+    """A candidate whose latest revision cannot be approved by anyone (§7.5)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    revision_id: uuid.UUID
+    candidate_id: uuid.UUID
+    campaign_id: uuid.UUID
+    campaign_name: str
+    account_name: str
+    revision_number: int
+    #: The subject and not the body, the same rule `RevisionRow` follows: a list is for choosing
+    #: what to open, and the message is read on the card.
+    subject: str
+    #: Empty for a refused revision: nothing about it failed a check, a person decided (`T-208`).
+    failures: list[ValidationFailureRow]
+    #: The §10.6 category a reviewer refused these words under, or `None` when validation is what
+    #: stopped them. The two are different situations wanting different reactions — one is a draft
+    #: that broke, the other a decision somebody already took — and a row that showed them
+    #: identically would ask a reviewer to redo a judgement that has been made.
+    refusal_reason: str | None
+    refusal_notes: str | None
+    record_version: datetime
+
+
+class StrandedRevisionPage(BaseModel):
+    """Drafts nobody can approve, longest-waiting first."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[StrandedRevisionRow]
+
+
+#: The two ways a candidate's latest revision ends up unapprovable: a check refused it, or a person
+#: did (`T-209`, `T-208`). Both leave the candidate with no draft anyone can act on and no queue
+#: holding it, which is the single question this endpoint answers.
+UNAPPROVABLE_STATES: Final = (
+    MessageRevisionState.VALIDATION_FAILED,
+    MessageRevisionState.INVALIDATED,
+)
+
+
+@router.get(
+    "/attention/revisions",
+    response_model=StrandedRevisionPage,
+    summary="Drafts nobody can approve, because a check refused them or a reviewer did",
+)
+def list_stranded_revisions(
+    session: Annotated[Session, Depends(db_session)],
+    principal: Annotated[Principal, Depends(requires(Permission.VIEW_REVIEW_QUEUE))],
+    campaign_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> StrandedRevisionPage:
+    """§7.5's invalidated drafts. A read, so `requires` rather than `requires_mutation`."""
+    now = datetime.now(UTC)
+
+    later = aliased(MessageRevision)
+    a_later_revision_of_the_same_draft = (
+        select(later.id)
+        .where(
+            later.draft_id == MessageRevision.draft_id,
+            later.revision_number > MessageRevision.revision_number,
+        )
+        .exists()
+    )
+
+    filters: list[ColumnElement[bool]] = [
+        MessageRevision.state.in_(UNAPPROVABLE_STATES),
+        ~a_later_revision_of_the_same_draft,
+    ]
+    if campaign_id is not None:
+        filters.append(CampaignCandidate.campaign_id == campaign_id)
+
+    rows = session.execute(
+        select(MessageRevision, CampaignCandidate.id, Campaign.id, Campaign.name, Account.name)
+        .join(MessageDraft, MessageDraft.id == MessageRevision.draft_id)
+        .join(CampaignCandidate, CampaignCandidate.id == MessageDraft.candidate_id)
+        .join(Campaign, Campaign.id == CampaignCandidate.campaign_id)
+        .join(Account, Account.id == CampaignCandidate.account_id)
+        .where(*filters)
+        .order_by(*REVISION_ORDER)
+    ).all()
+
+    return StrandedRevisionPage(
+        items=[
+            StrandedRevisionRow(
+                revision_id=revision.id,
+                candidate_id=candidate,
+                campaign_id=campaign,
+                campaign_name=campaign_name,
+                account_name=account_name,
+                revision_number=revision.revision_number,
+                subject=revision.subject,
+                # Not recomputed for a refusal: validation has nothing to say about a revision a
+                # person decided against, and re-running it would put a list of checks that pass
+                # underneath a decision that stands.
+                failures=(
+                    []
+                    if revision.state is MessageRevisionState.INVALIDATED
+                    else [
+                        ValidationFailureRow(
+                            check=failure.check, reason=failure.reason, inputs=failure.inputs
+                        )
+                        for failure in validate_revision(session, revision, at=now).failures
+                    ]
+                ),
+                refusal_reason=revision.refusal_reason,
+                refusal_notes=revision.refusal_notes,
+                record_version=revision.updated_at,
+            )
+            for revision, candidate, campaign, campaign_name, account_name in rows
+        ]
+    )
+
+
 # --- §12.3 items 1-5: everything the review card shows (T-149) -----------------------------------
 
 #: Strongest evidence first. §12.3 item 2 asks for "strongest evidence", and a card that led with
@@ -471,10 +637,19 @@ class CandidateDetail(BaseModel):
 
 
 #: The sentence the card shows for "what will happen next" while nothing can be sent.
+#:
+#: **One noun for the thing approval produces, and it is "draft" (`T-215`).** This used to end
+#: "creates no outbound message", four inches from a form promising that approving "queues a
+#: draft" — both true, and read together as a contradiction, because a reader has no way to know
+#: the two nouns name different objects. A rehearsal reader worked it out and said so: *"I think
+#: the reconciliation is that a draft is an internal record and an outbound message is a thing
+#: that flies — but I had to work that out, and I'm not certain I'm right."* Being uncertain
+#: whether you just sent an email is the worst possible thing for this sentence to leave behind.
+#: So the second noun is gone, and what a draft *is* is stated instead of implied.
 SHADOW_MODE_OUTCOME: Final = (
-    "Nothing is sent. This build runs in shadow mode: approving records the decision and "
-    "creates no outbound message. Live sending is gated (G-07) and needs a separate, explicit "
-    "authorization."
+    "Nothing is sent. This build runs in shadow mode: approving records the decision and writes "
+    "a draft, which stays here for you to review and is delivered to nobody. Live sending is "
+    "gated (G-07) and needs a separate, explicit authorization."
 )
 
 
@@ -718,6 +893,119 @@ def edit_revision_endpoint(
         expired_approvals=result.expired_approvals,
         is_valid=result.is_valid,
         failed_checks=[failure.check.value for failure in result.validation.failures],
+    )
+
+
+# --- §12.3 item 6: refusing the words, without writing replacements (T-208) ----------------------
+#
+# The third thing a reviewer can do with a draft, and the one `T-071d` found missing: approve these
+# words, edit them, or say they must not be sent. Three runs of three took the third decision and
+# had nowhere to put it.
+#
+# **A subset of §10.6, and a deliberately small one.** These three categories are about the words;
+# the other eight are about the candidate — its campaign, its account, its buyer role, its
+# readiness — and are already reachable through `reject`. Offering all eleven here would let a
+# reviewer file "wrong account" against a message revision, which records a true statement about
+# the wrong object. Fail closed: the schema refuses the rest and the refusal says where they live.
+
+
+class MessageRefusalReason(StrEnum):
+    """The §10.6 categories that are judgements about the message rather than the candidate.
+
+    Values match `DecisionCategory` exactly. A separate enum rather than a runtime filter over
+    that one, because it is the API's schema that has to refuse the other eight before a handler
+    runs — the same reason `RejectRequest` takes a typed category instead of validating a string.
+    """
+
+    UNSUPPORTED_CLAIM = "unsupported_claim"
+    PERSONALIZATION_NOT_USEFUL = "personalization_not_useful"
+    TONE_OR_POSITIONING_PROBLEM = "tone_or_positioning_problem"
+
+
+class RefuseMessageRequest(BaseModel):
+    """Why these words must not be sent (§10.6, §12.3 item 7)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    reason: MessageRefusalReason
+    #: Optional, and the reason a refusal is worth more than a category: this is where a reviewer
+    #: says what was actually wrong. Never logged (§15.5) — it is on the row.
+    notes: str | None = Field(default=None, max_length=1000)
+    record_version: datetime | None = None
+
+
+class RefuseMessageResponse(BaseModel):
+    """What the refusal recorded, and what it did not do."""
+
+    model_config = ConfigDict(frozen=True)
+
+    message_revision_id: uuid.UUID
+    #: A plain string for the same reason `ApproveMessageResponse.revision_state` is one.
+    revision_state: str
+    reason: MessageRefusalReason
+    #: Stated because a reviewer refusing *wording* deserves to know the candidate is untouched —
+    #: and that nothing will write a replacement by itself.
+    what_happens_next: str
+    record_version: datetime
+
+
+REFUSAL_OUTCOME_NOTE: Final = (
+    "These words are recorded as refused and can no longer be approved. The candidate itself is "
+    "unchanged — this was a decision about the message, not about the company. Nothing writes a "
+    "replacement automatically, so this candidate now has no draft anyone can approve; it is "
+    "listed on the attention page until somebody deals with it."
+)
+
+
+@router.post(
+    "/revisions/{revision_id}/refuse",
+    response_model=RefuseMessageResponse,
+    summary="Refuse a revision's wording, with a reason and no replacement text",
+)
+def refuse_message_endpoint(
+    revision_id: uuid.UUID,
+    request: RefuseMessageRequest,
+    session: Annotated[Session, Depends(db_session)],
+    principal: Annotated[Principal, Depends(requires_mutation(Permission.CORRECT_CANDIDATE))],
+) -> RefuseMessageResponse:
+    """§8.2's `review_pending -> invalidated`, with §10.6's reason attached.
+
+    `CORRECT_CANDIDATE` and not `APPROVE_MESSAGE`: this is a tier-3 correction — it stops an
+    external effect rather than authorizing one, and a role trusted to tidy the queue is trusted
+    to say "not these words". The inverse would be worse: a reviewer able to approve a message but
+    not to refuse it is the hole this task exists to close.
+    """
+    revision = session.get(MessageRevision, revision_id)
+    if revision is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such revision")
+
+    if request.record_version is not None and request.record_version != revision.updated_at:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "this revision changed since it was loaded; reload the card before refusing so "
+                "you are refusing the text you read"
+            ),
+        )
+
+    try:
+        refuse(
+            session,
+            revision,
+            reason=request.reason.value,
+            notes=request.notes,
+            actor=principal.actor,
+        )
+    except RefusalRefused as refusal:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(refusal)) from refusal
+
+    session.commit()
+    return RefuseMessageResponse(
+        message_revision_id=revision.id,
+        revision_state=revision.state.value,
+        reason=request.reason,
+        what_happens_next=REFUSAL_OUTCOME_NOTE,
+        record_version=revision.updated_at,
     )
 
 

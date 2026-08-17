@@ -215,6 +215,88 @@ def supersede(
     )
 
 
+# --- refusing the words themselves (T-208; §10.6, §12.3 items 6-7) -------------------------------
+#
+# `T-071d` watched three readers of three decide a draft must not go out, and none of them could
+# record it: the card offered *approve these words* and *edit this draft*, so a refusal could only
+# be expressed by authoring replacement copy. A reviewer with no better wording had nothing to
+# press.
+#
+# **This is not rejecting the candidate.** All three runs approved the company on its evidence and
+# refused only the words — §11.3 and ADR-008 make those two decisions about two objects, and
+# collapsing them is exactly what `T-205` was filed to end.
+#
+# **No new state.** §8.2 already offers `review_pending -> invalidated` and
+# `validation_failed -> invalidated`; a refusal is that edge, with a reason. Inventing a
+# `refused` state would be the drift ADR-015 exists to prevent.
+#
+# **The reason is a plain string here.** §10.6's categories live in `campaigns.decisions`, and a
+# low-level revision helper importing that package to name eleven strings would drag the campaign
+# graph into every path that retires a revision. The API layer decides which categories may reach
+# this function, and `tests/test_review_refusal.py` holds it to that.
+
+#: Revision states a reviewer may refuse from. `draft` is absent because nobody has been shown it;
+#: `approved` is absent because a decision already stands and withdrawing one is a revocation
+#: (§8.4), not a refusal.
+REFUSABLE_STATES: Final = frozenset(
+    {MessageRevisionState.REVIEW_PENDING, MessageRevisionState.VALIDATION_FAILED}
+)
+
+
+class RefusalRefused(RevisionError):
+    """The refusal was not permitted."""
+
+
+def refuse(
+    session: Session,
+    revision: MessageRevision,
+    *,
+    reason: str,
+    actor: Actor,
+    notes: str | None = None,
+    correlation_id: str | None = None,
+) -> MessageRevision:
+    """Record that these exact words must not be sent. Adds to ``session`` without committing.
+
+    The content is untouched, as always: what a reviewer refused stays readable exactly as they
+    refused it, which is the same guarantee an edit gives the revision it supersedes.
+    """
+    if not reason.strip():
+        raise RefusalRefused(
+            "a refusal needs a §10.6 reason; a decision nobody can explain later is one nobody "
+            "can review"
+        )
+    if revision.state not in REFUSABLE_STATES:
+        raise RefusalRefused(
+            f"revision {revision.id} is {revision.state.value}; only a revision a reviewer is "
+            f"actually looking at can be refused"
+        )
+
+    revision.refusal_reason = reason
+    revision.refusal_notes = notes.strip() if notes and notes.strip() else None
+    transition(
+        session,
+        revision,
+        MessageRevisionState.INVALIDATED,
+        actor=actor,
+        reason=f"refused by a reviewer: {reason}",
+        correlation_id=correlation_id,
+    )
+    record_audit_event(
+        session,
+        actor=actor,
+        action="message_revision.refused",
+        entity_type=ENTITY_TYPE,
+        entity_id=revision.id,
+        policy_decision=f"refusal:{reason}",
+        # The category, never the notes: §15.5 keeps free text a reviewer typed out of the
+        # payload, and the notes are on the row for whoever opens it.
+        payload={"revision_id": str(revision.id), "reason": reason},
+        correlation_id=correlation_id,
+    )
+    return revision
+
+
 #: The only revision state an approval may be granted from. §8.2 offers `review_pending ->
 #: approved` and no other edge into `approved`, and approving a revision nobody reviewed would
 #: skip §8.3 step 8 entirely.

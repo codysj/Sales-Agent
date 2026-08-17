@@ -1113,6 +1113,36 @@ def test_the_card_says_nothing_will_be_sent(
     assert "G-07" in body["what_happens_next"]
 
 
+def test_the_card_names_what_approving_produces_only_one_way(
+    client: TestClient, db_session_for_api: Session, world: World
+) -> None:
+    """`T-215` criterion 1, the half that lives on this side of the wire.
+
+    This sentence and the dashboard's approve form both name the thing approval produces, and they
+    named it differently: "queues a draft" one section above "creates no outbound message". Both
+    accurate, and read together a contradiction — a reader has no way to know the two nouns are
+    two objects. One of the rehearsal readers reconstructed the distinction and said they were not
+    certain they had it right, which is the worst state to leave somebody in about whether they
+    have just sent an email.
+
+    The frontend half is `frontend/tests/reviewer-vocabulary.test.ts`; neither test can see the
+    other's string, which is exactly why the two sentences drifted apart.
+    """
+    token = sign_in(db_session_for_api, RoleKey.OPERATOR_REVIEWER)
+
+    sentence = detail(client, token, world.in_review[0].id).json()["what_happens_next"]
+
+    assert "draft" in sentence
+    for alternate in ("outbound message", "outbound email", "outgoing message"):
+        assert alternate not in sentence.lower(), (
+            f"the card calls the product of approval a draft and also a {alternate!r}; two nouns "
+            f"for one object is what T-215 removed"
+        )
+
+    # Having removed the second noun, the first has to carry the meaning alone.
+    assert "delivered to nobody" in sentence
+
+
 def test_the_card_offers_no_actions(
     client: TestClient, db_session_for_api: Session, world: World
 ) -> None:

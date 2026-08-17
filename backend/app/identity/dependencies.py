@@ -150,9 +150,18 @@ def requires(permission: Permission) -> Callable[[Principal | None], Principal]:
         except Forbidden as exc:
             # The message names the permission, never the roles the caller lacks: telling them
             # which role would work is telling them what to ask for.
+            #
+            # A sentence first, the permission name after it (`T-210`). This reaches a reviewer's
+            # screen verbatim — the dashboard renders the backend's own `detail` — and three
+            # rehearsal readers met the bare `this action requires view_operations`, which reads
+            # as a system error rather than as "you do not have access to this". The identifier
+            # stays, because it is what an administrator needs in order to grant it.
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"this action requires {permission.value}",
+                detail=(
+                    "your account does not have access to this. Ask an administrator for the "
+                    f"{permission.value} permission."
+                ),
             ) from exc
 
         assert principal is not None  # `authorize` raises for `None` on any real permission

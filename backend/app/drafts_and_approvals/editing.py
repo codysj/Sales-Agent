@@ -44,14 +44,25 @@ from app.drafts_and_approvals.validation import ValidationResult, apply_validati
 
 log = structlog.get_logger(__name__)
 
-#: Revision states an edit may start from. A superseded or invalidated revision is history;
-#: editing it would branch the chain, and §10.5's numbering assumes one line.
+#: Revision states an edit may start from.
+#:
+#: `superseded` is absent and stays absent: a superseded revision has a successor by definition,
+#: so editing it would take stale text as the base and retire the live revision — the branch
+#: §10.5's single-line numbering assumes away.
+#:
+#: `invalidated` was absent for the same reason and should not have been (`T-211`). A revision a
+#: reviewer refused (`T-208`) is invalidated *and* is its draft's last word, and nothing supersedes
+#: it, because nothing writes a replacement automatically. Excluding it meant a refusal was a dead
+#: end: the candidate is already `approved`, and §8.2 offers `approved -> invalidated` and no edge
+#: to `rejected`, so there was no legal move left anywhere in the product. Editing is the route
+#: back, and `require_latest` is what keeps it from being the branch above.
 EDITABLE_STATES: Final = frozenset(
     {
         MessageRevisionState.DRAFT,
         MessageRevisionState.REVIEW_PENDING,
         MessageRevisionState.VALIDATION_FAILED,
         MessageRevisionState.APPROVED,
+        MessageRevisionState.INVALIDATED,
     }
 )
 
@@ -142,6 +153,20 @@ def edit_revision(
     draft = session.get(MessageDraft, revision.draft_id)
     if draft is None:  # pragma: no cover - the foreign key prevents this
         raise EditRefused(f"revision {revision.id} points at a missing draft")
+
+    # The state check above is not sufficient on its own once `invalidated` is editable
+    # (`T-211`). Every other editable state implies "latest" — a revision that has been replaced
+    # is `superseded` — but nothing supersedes an invalidated one, so a draft can hold an
+    # invalidated revision *and* a later live one at the same time. Editing the older of those
+    # would base the new text on what a reviewer already refused and retire the current wording
+    # to do it. Checked here rather than in the state table because it is a fact about the draft,
+    # not about the revision.
+    latest = revisions.latest_revision(session, draft.id)
+    if latest is not None and latest.id != revision.id:
+        raise EditRefused(
+            f"revision {revision.id} is not the latest revision of its draft (revision "
+            f"{latest.revision_number} is); edit that one, or the chain would branch"
+        )
 
     # First, and deliberately: an approval must stop being usable in the same transaction that
     # makes the text it names obsolete.

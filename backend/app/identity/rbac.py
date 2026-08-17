@@ -176,6 +176,9 @@ ROUTE_PERMISSIONS: Final[dict[tuple[str, str], Permission | Public]] = {
     ("GET", "/api/review/candidates"): Permission.VIEW_REVIEW_QUEUE,
     ("GET", "/api/review/revisions"): Permission.VIEW_REVIEW_QUEUE,
     ("GET", "/api/review/attention/approvals"): Permission.VIEW_REVIEW_QUEUE,
+    # The other half of §7.5 (`T-209`). Same tier as the queues it sits beside: a stranded draft
+    # is work waiting to be looked at, and seeing it grants no more than seeing the queue does.
+    ("GET", "/api/review/attention/revisions"): Permission.VIEW_REVIEW_QUEUE,
     # Tier 5 for a read: see . The overview reports dead-job reasons and which
     # safety switches are thrown.
     ("GET", "/api/operations/overview"): Permission.VIEW_OPERATIONS,
@@ -188,6 +191,10 @@ ROUTE_PERMISSIONS: Final[dict[tuple[str, str], Permission | Public]] = {
     ("POST", "/api/review/approvals/{approval_id}/revoke"): Permission.APPROVE_MESSAGE,
     ("GET", "/api/review/candidates/{candidate_id}"): Permission.VIEW_REVIEW_QUEUE,
     ("POST", "/api/review/revisions/{revision_id}/edit"): Permission.CORRECT_CANDIDATE,
+    # Tier 3 like the edit beside it (`T-208`): refusing wording stops an external effect rather
+    # than authorizing one. A role that may approve a message but not refuse it would be the hole
+    # that task exists to close.
+    ("POST", "/api/review/revisions/{revision_id}/refuse"): Permission.CORRECT_CANDIDATE,
     # Rejecting and deferring are tier-3 corrections: reversible internal state, no external
     # effect. Approving is tier 4 and is a different permission — and a different task.
     ("POST", "/api/review/candidates/{candidate_id}/reject"): Permission.CORRECT_CANDIDATE,

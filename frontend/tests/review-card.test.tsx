@@ -92,7 +92,7 @@ const REQUIRED_ELEMENTS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ],
   ["2. Strongest evidence, source quality, and retrieval time", ["evaluating stationary storage", "high", "2026-07-30 09:15 UTC"]],
   ["3. Product readiness and approved claims", ["evaluation_or_pilot", "SYNTHETIC-CLAIM-sodium-readiness"]],
-  ["4. CRM relationship and suppression warnings", ["No suppression recorded", "CRM relationship: not checked"]],
+  ["4. CRM relationship and suppression warnings", ["No suppression recorded", "Existing relationship with this account", "not checked"]],
   ["5. Exact revision and what happens next", ["SYNTHETIC subject line", "SYNTHETIC body paragraph.", "Nothing is sent"]],
   ["6. Actions", ["Approve", "Edit this draft", "Reject", "Defer", "Request more research"]],
   ["7. Structured correction reason", ["Why is this being corrected?", "Evidence does not support the claim"]],
@@ -168,6 +168,59 @@ describe("what the card refuses to invent", () => {
   });
 });
 
+describe("a card that has just had its candidate approved", () => {
+  // `T-210` criterion 1. Approving queues a draft; the worker writes it moments later. For that
+  // moment the card said "a draft has been queued" in one section and "no draft has been written
+  // for this candidate yet" in another, and two rehearsal runs of three read both at once.
+  const queued: CandidateDetail = { ...FULL, state: "approved", current_revision: null };
+
+  it("does not claim a draft was queued and that none exists", () => {
+    const html = render(queued);
+
+    expect(html).toContain("A draft has been queued");
+    expect(html).not.toContain("No draft has been written");
+  });
+
+  it("still says no draft has been written when none was ever queued", () => {
+    // The control: the sentence above is wrong only *after* approval, and removing it entirely
+    // would leave a candidate in review with an unexplained blank.
+    const html = render({ ...FULL, current_revision: null });
+
+    expect(html).toContain("No draft has been written");
+    expect(html).not.toContain("A draft has been queued");
+  });
+});
+
+describe("what the card says in the reviewer's own language", () => {
+  // `T-210` criterion 3. Three rehearsal runs of three hit internal vocabulary on screen. The
+  // identifiers may stay as a reference — somebody has to be able to search for them — but not
+  // one of them may be the only thing on screen that carries the meaning.
+  it("explains the product's readiness before naming it", () => {
+    const html = render();
+
+    expect(html).toContain("Offered for evaluation and pilot deployments");
+    expect(html).toContain("(recorded as evaluation_or_pilot)");
+  });
+
+  it("explains the revision's state before naming it", () => {
+    const html = render();
+
+    expect(html).toContain("waiting for you");
+    expect(html).toContain("(recorded as review_pending)");
+  });
+
+  it("never shows a bare identifier where the meaning should be", () => {
+    // The property, rather than three more examples of it: every internal identifier the
+    // rehearsal named appears only after the words that explain it.
+    const html = render();
+
+    for (const identifier of ["evaluation_or_pilot", "review_pending"]) {
+      expect(html).toContain(`(recorded as ${identifier})`);
+      expect(html.split(`(recorded as ${identifier})`).join("")).not.toContain(identifier);
+    }
+  });
+});
+
 describe("suppression", () => {
   it("warns loudly when the contact is suppressed", () => {
     const html = render({
@@ -225,6 +278,9 @@ describe("shadow mode", () => {
         "Save as a new revision",
         "Approve",
         "Approve these words",
+        // `T-208`. The third decision about the words, and the one three rehearsal readers took
+        // and could not record: no, without writing replacements.
+        "Do not send these words",
         "Reject",
         "Defer",
         "Request more research",
@@ -242,12 +298,13 @@ describe("shadow mode", () => {
 
     expect(html).not.toContain("Not yet wired");
     for (const button of disabled) {
-      expect(button).toMatch(/title="(Choose|A deferral needs)/);
+      expect(button).toMatch(/title="(Choose|A deferral needs|A refusal needs)/);
     }
     // Edit's submit is live from the start: it has nothing to choose first.
     expect(html).toContain("Save as a new revision");
     expect(html).toContain("Choose the address this message would go to");
     expect(html).toContain("A deferral needs a date or an event");
+    expect(html).toContain("A refusal needs a reason");
   });
 
   it("offers the structured correction reason on the form that uses it", () => {
@@ -258,6 +315,47 @@ describe("shadow mode", () => {
 
     expect(select).toContain("required");
     expect(select).not.toContain("disabled");
+  });
+});
+
+describe("a candidate whose decision has already been taken", () => {
+  // `T-211` criterion 2. Every candidate that has a draft is `approved` — approving is what
+  // enqueues drafting — so *every* card showing a message was offering three candidate controls
+  // that the server could only refuse: approve, reject, defer, and the research request that
+  // shares their form. `T-071c` already watched a reader press one of these and get specification
+  // prose back.
+  const decided: CandidateDetail = { ...FULL, state: "approved" };
+
+  it("offers no candidate control that could only fail", () => {
+    const html = render(decided);
+    const labels = new Set((html.match(/<button[^>]*>[^<]*/g) ?? []).map((b) => b.split(">")[1]));
+
+    expect(labels.has("Approve")).toBe(false);
+    expect(labels.has("Reject")).toBe(false);
+    expect(labels.has("Defer")).toBe(false);
+    expect(labels.has("Request more research")).toBe(false);
+  });
+
+  it("says which decision was already taken, and what is still open", () => {
+    const html = render(decided);
+
+    expect(html).toContain("already been approved for outreach");
+    // The message half is a different object and stays live — that separation is the whole of
+    // `T-205` and `T-208`, and hiding it here would undo both.
+    expect(html).toContain("Approve these words");
+    expect(html).toContain("Do not send these words");
+    expect(html).toContain("Save as a new revision");
+  });
+
+  it("still offers all four while the candidate is in review", () => {
+    // The control. Without this the test above would pass on a card that had lost the buttons for
+    // any reason at all, including a broken render.
+    const labels = new Set((render().match(/<button[^>]*>[^<]*/g) ?? []).map((b) => b.split(">")[1]));
+
+    expect(labels.has("Approve")).toBe(true);
+    expect(labels.has("Reject")).toBe(true);
+    expect(labels.has("Defer")).toBe(true);
+    expect(labels.has("Request more research")).toBe(true);
   });
 });
 

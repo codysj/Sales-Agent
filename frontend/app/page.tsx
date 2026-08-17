@@ -26,7 +26,7 @@ export default function Home() {
       <p>
         This is the authoritative interface for reviewing candidates and approving exact message
         revisions. Nothing is sent from here without an explicit human approval, and live sending
-        is gated (G-07) behind a separate authorization.
+        cannot happen at all until somebody decides otherwise (gate G-07).
       </p>
 
       <nav aria-label="Dashboard sections">

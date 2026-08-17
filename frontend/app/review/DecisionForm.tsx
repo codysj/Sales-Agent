@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ApiRefused, deferCandidate, rejectCandidate, requestMoreResearch } from "../../lib/api";
 import type { CandidateDetail, DecisionCategory, DecisionResponse } from "../../lib/api";
 import { getSessionToken } from "../../lib/session";
+import { DECIDABLE_STATE, whyNotDecidable } from "./decidable";
 
 /**
  * Rejecting and deferring, with the reason §10.6 asks for (T-066b2; §12.3 items 6 and 7, §10.6).
@@ -67,7 +68,13 @@ type Outcome =
   | { kind: "decided"; response: DecisionResponse }
   | { kind: "refused"; detail: string };
 
-export function DecisionForm({ candidate }: { candidate: CandidateDetail }) {
+export function DecisionForm({
+  candidate,
+  onChanged,
+}: {
+  candidate: CandidateDetail;
+  onChanged?: (() => void) | undefined;
+}) {
   const [category, setCategory] = useState<DecisionCategory | "">("");
   const [notes, setNotes] = useState("");
   const [untilDate, setUntilDate] = useState("");
@@ -76,19 +83,22 @@ export function DecisionForm({ candidate }: { candidate: CandidateDetail }) {
 
   const busy = outcome.kind === "deciding";
   const waypoint = untilDate !== "" || untilEvent.trim() !== "";
+  //: A decision that actually moved the candidate. A research request is not one (ADR-022).
+  const decided = outcome.kind === "decided" && outcome.response.kind !== "request_research";
 
   async function send(run: (token: string) => Promise<DecisionResponse>) {
     const token = getSessionToken();
     if (token === null) {
       setOutcome({
         kind: "refused",
-        detail: "You are not signed in, so nothing was recorded. Sign in and try again (T-151).",
+        detail: "You are not signed in, so nothing was recorded. Sign in and try again.",
       });
       return;
     }
     setOutcome({ kind: "deciding" });
     try {
       setOutcome({ kind: "decided", response: await run(token) });
+      onChanged?.();
     } catch (error) {
       setOutcome({
         kind: "refused",
@@ -161,117 +171,148 @@ export function DecisionForm({ candidate }: { candidate: CandidateDetail }) {
     );
   }
 
+  // Rejecting, deferring, and asking for more research all require `review_pending` on the server
+  // (`DECIDABLE_STATE`, and ADR-022 for the third). Past it, all three of these controls could
+  // only fail — see `decidable.ts` for why that is worth a guard rather than an error message.
+  if (outcome.kind !== "decided" && candidate.state !== DECIDABLE_STATE) {
+    return (
+      <section aria-labelledby="decide">
+        <h2 id="decide">Reject or defer</h2>
+        <p>{whyNotDecidable(candidate.state)}</p>
+      </section>
+    );
+  }
+
   return (
     <section aria-labelledby="decide">
       <h2 id="decide">Reject or defer</h2>
+      <p>
+        {/* `T-210`. All three rehearsal readers asked whether the reason they had chosen was
+            being filed as a rejection — because one dropdown sat above two buttons that do very
+            different things. The dropdown is honest about serving both now, and each button says
+            which it is. */}
+        Choose a reason, then say what to do with it. <strong>Reject</strong> closes this candidate;{" "}
+        <strong>Request more research</strong> leaves it exactly where it is and queues one more
+        evidence pass. The reason is recorded either way, and recorded as whichever you pressed.
+      </p>
 
-      <form
-        onSubmit={(event) => {
-          void reject(event);
-        }}
-        aria-label="Reject candidate"
-      >
-        {/* §12.3 item 7 — required at the point of entry, and again at the server. */}
-        <label htmlFor="decision-category">Why is this being rejected?</label>
-        <select
-          id="decision-category"
-          name="category"
-          value={category}
-          required
-          onChange={(event) => {
-            setCategory(event.target.value as DecisionCategory | "");
-          }}
-        >
-          <option value="">Select a reason</option>
-          {REJECTION_CATEGORIES.map((each) => (
-            <option key={each} value={each}>
-              {CATEGORY_LABELS[each]}
-            </option>
-          ))}
-        </select>
+      {/* A decision that moved the candidate takes its own forms off the screen (`T-210`):
+          leaving them offers a second rejection the server would refuse. A *research request*
+          is the exception and deliberately so — ADR-022 moves the candidate nowhere, so the
+          reviewer is still looking at something they may yet reject or defer. */}
+      {decided ? null : (
+        <>
+          <form
+            onSubmit={(event) => {
+              void reject(event);
+            }}
+            aria-label="Reject candidate"
+          >
+            {/* §12.3 item 7 — required at the point of entry, and again at the server. */}
+            <label htmlFor="decision-category">
+              Why? (recorded with whichever of the two you press)
+            </label>
+            <select
+              id="decision-category"
+              name="category"
+              value={category}
+              required
+              onChange={(event) => {
+                setCategory(event.target.value as DecisionCategory | "");
+              }}
+            >
+              <option value="">Select a reason</option>
+              {REJECTION_CATEGORIES.map((each) => (
+                <option key={each} value={each}>
+                  {CATEGORY_LABELS[each]}
+                </option>
+              ))}
+            </select>
 
-        <label htmlFor="decision-notes">Notes (optional)</label>
-        <textarea
-          id="decision-notes"
-          name="notes"
-          value={notes}
-          rows={3}
-          onChange={(event) => {
-            setNotes(event.target.value);
-          }}
-        />
+            <label htmlFor="decision-notes">Notes (optional)</label>
+            <textarea
+              id="decision-notes"
+              name="notes"
+              value={notes}
+              rows={3}
+              onChange={(event) => {
+                setNotes(event.target.value);
+              }}
+            />
 
-        <button
-          type="submit"
-          disabled={category === "" || busy}
-          title={
-            category === ""
-              ? "Choose a reason first — it is recorded with the rejection (§10.6)"
-              : undefined
-          }
-        >
-          {busy ? "Recording…" : "Reject"}
-        </button>
+            <button
+              type="submit"
+              disabled={category === "" || busy}
+              title={
+                category === ""
+                  ? "Choose a reason first — it is recorded with the rejection (§10.6)"
+                  : undefined
+              }
+            >
+              {busy ? "Recording…" : "Reject"}
+            </button>
 
-        {/* Same form, because it needs the same category and notes — but `type="button"`, so it
+            {/* Same form, because it needs the same category and notes — but `type="button"`, so it
             never submits the rejection. A reviewer asking for more evidence is not rejecting. */}
-        <button
-          type="button"
-          disabled={category === "" || busy}
-          title={
-            category === ""
-              ? "Choose a reason first — it is recorded with the request (§10.6)"
-              : undefined
-          }
-          onClick={() => {
-            void askForResearch();
-          }}
-        >
-          {busy ? "Recording…" : "Request more research"}
-        </button>
-      </form>
+            <button
+              type="button"
+              disabled={category === "" || busy}
+              title={
+                category === ""
+                  ? "Choose a reason first — it is recorded with the request (§10.6)"
+                  : undefined
+              }
+              onClick={() => {
+                void askForResearch();
+              }}
+            >
+              {busy ? "Recording…" : "Request more research"}
+            </button>
+          </form>
 
-      <form
-        onSubmit={(event) => {
-          void defer(event);
-        }}
-        aria-label="Defer candidate"
-      >
-        <label htmlFor="defer-until-date">Defer until a date</label>
-        <input
-          id="defer-until-date"
-          name="until_date"
-          type="date"
-          value={untilDate}
-          onChange={(event) => {
-            setUntilDate(event.target.value);
-          }}
-        />
+          <form
+            onSubmit={(event) => {
+              void defer(event);
+            }}
+            aria-label="Defer candidate"
+          >
+            <label htmlFor="defer-until-date">Defer until a date</label>
+            <input
+              id="defer-until-date"
+              name="until_date"
+              type="date"
+              value={untilDate}
+              onChange={(event) => {
+                setUntilDate(event.target.value);
+              }}
+            />
 
-        <label htmlFor="defer-until-event">…or until an event</label>
-        <input
-          id="defer-until-event"
-          name="until_event"
-          type="text"
-          value={untilEvent}
-          maxLength={500}
-          onChange={(event) => {
-            setUntilEvent(event.target.value);
-          }}
-        />
+            <label htmlFor="defer-until-event">…or until an event</label>
+            <input
+              id="defer-until-event"
+              name="until_event"
+              type="text"
+              value={untilEvent}
+              maxLength={500}
+              onChange={(event) => {
+                setUntilEvent(event.target.value);
+              }}
+            />
 
-        <button
-          type="submit"
-          disabled={!waypoint || busy}
-          title={
-            waypoint
-              ? undefined
-              : "A deferral needs a date or an event; without one nothing brings this candidate back"
-          }
-        >
-          {busy ? "Recording…" : "Defer"}
-        </button>
-      </form>
+            <button
+              type="submit"
+              disabled={!waypoint || busy}
+              title={
+                waypoint
+                  ? undefined
+                  : "A deferral needs a date or an event; without one nothing brings this candidate back"
+              }
+            >
+              {busy ? "Recording…" : "Defer"}
+            </button>
+          </form>
+        </>
+      )}
 
       {outcome.kind === "refused" && <p role="alert">{outcome.detail}</p>}
 
@@ -291,14 +332,12 @@ export function DecisionOutcome({ response }: { response: DecisionResponse }) {
         </p>
       ) : response.kind === "reject" ? (
         <p>
-          Rejected: <strong>{CATEGORY_LABELS[response.category]}</strong>. This candidate is
-          closed.
+          Rejected: <strong>{CATEGORY_LABELS[response.category]}</strong>. This candidate is closed.
         </p>
       ) : (
         <p>
-          Deferred until{" "}
-          <strong>{response.defer_until_date ?? response.defer_until_event}</strong>, as{" "}
-          {CATEGORY_LABELS[response.category]}.
+          Deferred until <strong>{response.defer_until_date ?? response.defer_until_event}</strong>,
+          as {CATEGORY_LABELS[response.category]}.
         </p>
       )}
       {response.notes !== null && <p>Notes: {response.notes}</p>}

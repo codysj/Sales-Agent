@@ -48,7 +48,13 @@ approves. Approving records a decision and queues a draft — it sends nothing.
 
 The review card exists so a reviewer can approve *responsibly*. Product statements cite a
 versioned approved claim; prospect statements cite stored evidence with its source quality and
-retrieval time.
+retrieval time. Both are enforced, not merely rendered: a body whose product sentences are not the
+cited claims verbatim fails validation, and so does a message that says anything about the
+prospect while citing no evidence at all.
+
+What validation does **not** check is entailment — whether the cited excerpt actually supports the
+sentence written from it. That is a model-quality question and it is why a person is still in the
+loop; the card puts both texts in front of them for exactly that reason.
 
 ![Approved claims, each with its key and version](docs/media/approved-claims.png)
 

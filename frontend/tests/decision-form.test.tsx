@@ -78,7 +78,7 @@ function sentBody(stub: ReturnType<typeof stubFetch>): Record<string, unknown> {
 }
 
 function chooseCategory(value: string) {
-  fireEvent.change(screen.getByLabelText("Why is this being rejected?"), { target: { value } });
+  fireEvent.change(screen.getByLabelText("Why? (recorded with whichever of the two you press)"), { target: { value } });
 }
 
 function submitReject() {
@@ -123,7 +123,7 @@ describe("rejecting", () => {
     render(<DecisionForm candidate={CANDIDATE} />);
 
     const options = [
-      ...screen.getByLabelText<HTMLSelectElement>("Why is this being rejected?").options,
+      ...screen.getByLabelText<HTMLSelectElement>("Why? (recorded with whichever of the two you press)").options,
     ].map((option) => option.value);
 
     expect(options).toContain("wrong_campaign");
@@ -136,7 +136,7 @@ describe("rejecting", () => {
   it("labels each category in words rather than identifiers", () => {
     render(<DecisionForm candidate={CANDIDATE} />);
 
-    const text = screen.getByLabelText("Why is this being rejected?").textContent ?? "";
+    const text = screen.getByLabelText("Why? (recorded with whichever of the two you press)").textContent ?? "";
     expect(text).toContain("Poor buyer role");
     expect(text).toContain("Weak or stale evidence");
     expect(text).not.toContain("poor_buyer_role");
@@ -204,7 +204,7 @@ describe("the category requirement", () => {
   it("is required on the field itself", () => {
     render(<DecisionForm candidate={CANDIDATE} />);
 
-    const select = screen.getByLabelText<HTMLSelectElement>("Why is this being rejected?");
+    const select = screen.getByLabelText<HTMLSelectElement>("Why? (recorded with whichever of the two you press)");
     expect(select.required).toBe(true);
     expect(select.value).toBe("");
   });

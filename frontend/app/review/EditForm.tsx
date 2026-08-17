@@ -19,19 +19,22 @@ import { getSessionToken } from "../../lib/session";
  * it as the guard that actually binds. Two independent checks, and the near one gives a reviewer
  * the message immediately.
  *
- * **A validation failure is shown as the check that failed.** `T-055` names its checks —
- * `claim_citations`, `product_readiness`, `product_statement_grounding`, `compliance_elements` —
- * and a reviewer who is told "validation failed" has to guess which sentence to fix. The revision
- * still exists in `validation_failed`, so the form says that too: the edit was *saved* and is not
- * approvable, which is a different thing from the edit being lost.
+ * **A validation failure is shown as the check that failed.** `T-055` names each of its checks —
+ * see `CHECK_EXPLANATIONS` below, which `backend/tests/test_review_edit.py` holds to covering all
+ * of them — and a reviewer who is told "validation failed" has to guess which sentence to fix.
+ * Four of them were listed here until `T-214`: four of nine when written, four of ten by the time
+ * anybody read it. The revision still exists in `validation_failed`, so the form says that too:
+ * the edit was *saved* and is not approvable, which is a different thing from the edit being lost.
  *
  * **The record version goes back with the edit.** The card was rendered at some moment; if the
  * revision moved since, `T-065a` answers 409 and the reviewer reloads rather than overwriting
  * text they never read.
  *
  * **Without a session token it refuses to submit.** `T-065a` requires a bearer token on
- * mutations and `T-151` is the sign-in screen that will supply one. Until then there is no token
- * in a real browser, and saying so beats posting an unauthenticated request and rendering a 401.
+ * mutations, and saying so beats posting an unauthenticated request and rendering a 401. The
+ * message used to add "sign-in is not built yet", which stopped being true when `T-151b` shipped
+ * the screen and stayed on the page for a fortnight (`T-216`) — an explanation that has outlived
+ * its reason is worse than no explanation, because a reviewer acts on it.
  */
 
 /** §12.3 item 7. The reasons a correction may cite, shared with the card's disabled preview. */
@@ -50,11 +53,31 @@ type Outcome =
   | { kind: "saved"; response: EditResponse }
   | { kind: "refused"; detail: string };
 
-export function EditForm({ revision }: { revision: NonNullable<CandidateDetail["current_revision"]> }) {
+export function EditForm({
+  revision,
+  onChanged,
+}: {
+  revision: NonNullable<CandidateDetail["current_revision"]>;
+  onChanged?: (() => void) | undefined;
+}) {
   const [subject, setSubject] = useState(revision.subject);
   const [body, setBody] = useState(revision.body);
   const [reason, setReason] = useState("");
   const [outcome, setOutcome] = useState<Outcome>({ kind: "idle" });
+
+  // The form starts holding the current wording, which is what a reviewer amending a sentence
+  // needs (`T-071d`: two runs retyped whole messages). `useState` seeds once, so once the page
+  // began refetching (`T-210`) that seed would go stale the moment a new revision arrived — the
+  // form would offer the *previous* revision's text as the base for the next edit. Adjusted
+  // during render rather than in an effect: an effect renders one frame of the wrong text first,
+  // and this form's whole job is to show the right text.
+  const [shownRevision, setShownRevision] = useState(revision.revision_id);
+  if (shownRevision !== revision.revision_id) {
+    setShownRevision(revision.revision_id);
+    setSubject(revision.subject);
+    setBody(revision.body);
+    setReason("");
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,8 +86,8 @@ export function EditForm({ revision }: { revision: NonNullable<CandidateDetail["
       setOutcome({
         kind: "refused",
         detail:
-          "You are not signed in, so this edit was not sent. Sign-in is not built yet (T-151); " +
-          "nothing was changed.",
+          "You are not signed in, so this edit was not sent. Sign in and try again; nothing was " +
+          "changed.",
       });
       return;
     }
@@ -82,6 +105,7 @@ export function EditForm({ revision }: { revision: NonNullable<CandidateDetail["
         token,
       );
       setOutcome({ kind: "saved", response });
+      onChanged?.();
     } catch (error) {
       setOutcome({
         kind: "refused",
@@ -171,7 +195,7 @@ export function EditOutcome({ response }: { response: EditResponse }) {
     <div role="status">
       <p>
         Saved as revision {response.revision.revision_number}. Revision{" "}
-        {response.revision.revision_number - 1} is superseded and can no longer be approved.
+        {response.revision.revision_number - 1} can no longer be approved.
       </p>
 
       {retired > 0 && (
@@ -222,7 +246,10 @@ export const CHECK_EXPLANATIONS: Readonly<Record<string, string>> = {
   product_readiness:
     "product_readiness — the message implies availability the product status does not support.",
   evidence_citations:
-    "evidence_citations — a statement about this prospect cites no evidence to support it.",
+    "evidence_citations — a cited piece of evidence is missing or out of date.",
+  evidence_for_personalization:
+    "evidence_for_personalization — the message says something about this prospect and cites no " +
+    "stored evidence at all.",
   recipient_contactable:
     "recipient_contactable — the recipient address is not verified, so it must not be used.",
   suppression: "suppression — this recipient is suppressed and must not be contacted.",

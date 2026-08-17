@@ -76,6 +76,10 @@ class Check(StrEnum):
     #: else — the only tractable form of "no free-form product statement" (§10.5).
     PRODUCT_STATEMENT_GROUNDING = "product_statement_grounding"
     COMPLIANCE_ELEMENTS = "compliance_elements"
+    #: The structural half of GP-02 (`T-207`): a message that says something about the prospect
+    #: has to cite the stored fact it rests on. `EVIDENCE_CITATIONS` checks the citations that are
+    #: there; this checks that there are any.
+    EVIDENCE_FOR_PERSONALIZATION = "evidence_for_personalization"
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,14 +221,15 @@ def _check_evidence_citations(
     human in the loop rather than a gap to be embarrassed about — but only if nobody mistakes the
     check for more than it is.
 
-    **A second, wider gap is deliberately not closed here** and is filed as `T-207`: an empty
-    citation list returns `None` below, so a draft that personalizes while citing *nothing* passes
-    this check entirely. That is a structural rule (does a prospect statement require a citation
-    at all?) rather than a question about the snapshots cited, and it wants its own decision.
+    **The wider question — whether a prospect statement needs a citation at all — is a different
+    check.** It was open when this was written and `T-207` closed it: see
+    `_check_personalization_is_cited`, which refuses an uncited personalization. This one stays
+    about the snapshots that *are* cited, because "the citation is stale" and "there is no
+    citation" want different sentences in front of a reviewer.
     """
     if not revision.evidence_ids:
-        # Nothing cited, nothing to verify. See `T-207` — this is also how an uncited
-        # personalization passes, which is a different defect from a stale citation.
+        # Nothing cited, nothing to verify here. Whether nothing *may* be cited is
+        # `_check_personalization_is_cited` (`T-207`).
         return None
 
     usable = {
@@ -339,6 +344,66 @@ def _check_product_statement_grounding(
     )
 
 
+def _personalization(
+    revision: MessageRevision, draft: MessageDraft, claims: Sequence[ApprovedClaim]
+) -> str | None:
+    """What the model wrote *about the prospect*, or `None` if the body is not template-shaped.
+
+    `T-054` renders `personalization + claims + boilerplate`, so everything before the claim
+    section is the prospect statement. Recovered by partitioning rather than by parsing: the same
+    string the grounding check looks for, used from the other side.
+    """
+    if draft.purpose not in PURPOSE_TEMPLATES:
+        return None
+    tail = f"{'\n\n'.join(claim.text for claim in claims)}\n\n{_boilerplate(draft)}"
+    head, separator, _ = revision.body.partition(tail)
+    if not separator:
+        return None
+    return head.strip()
+
+
+def _check_personalization_is_cited(
+    revision: MessageRevision, draft: MessageDraft, claims: Sequence[ApprovedClaim]
+) -> ValidationFailure | None:
+    """A message that says something about the prospect must cite stored evidence (§10.5, GP-02).
+
+    **This is the check `T-207` found missing, and the decision it records.** `_check_evidence_
+    citations` returns early on an empty list, so until now a draft could assert something about
+    an account while citing *nothing* and pass every check — which is a strictly weaker guarantee
+    than "evidence before persuasion", and weaker than what §10.5 and the README both describe.
+    Both default draft fixtures did exactly that, and one reached a reviewer in `T-071c`.
+
+    The specification leaves *how* to a local decision, not *whether*: §10.5 requires prospect
+    statements to cite stored evidence, GP-02 is "evidence before persuasion", and `process.md`
+    §4 says a new validator defaults to reject. So an uncited prospect statement is refused, and
+    the alternative — permitting it and documenting the weaker promise — was not taken.
+
+    **It refuses the absence of a citation, never the quality of one.** Whether the excerpt
+    actually supports the sentence is entailment, which is §19.3 and `T-082` and is not resolvable
+    against a database.
+
+    **A body that is not template-shaped is left alone.** `_check_product_statement_grounding`
+    already refuses it, and deciding which part of free-form prose is a prospect statement would
+    be a guess — a second failure derived from a guess is worse than one failure derived from a
+    string comparison.
+    """
+    if revision.evidence_ids:
+        return None
+    personalization = _personalization(revision, draft, claims)
+    if not personalization:
+        return None
+    return ValidationFailure(
+        check=Check.EVIDENCE_FOR_PERSONALIZATION,
+        reason=(
+            "this message says something about the prospect and cites no stored evidence; every "
+            "prospect statement rests on a recorded fact (§10.5, GP-02)"
+        ),
+        # The length, never the sentence: §15.5 keeps message content out of `inputs`, and the
+        # reviewer can read the body on the card.
+        inputs={"personalization_characters": str(len(personalization))},
+    )
+
+
 def _check_compliance_elements(
     revision: MessageRevision, draft: MessageDraft
 ) -> ValidationFailure | None:
@@ -397,6 +462,7 @@ def validate_revision(
             _check_recipient(point, policy),
             _check_suppression(session, point=point, candidate=candidate, at=moment),
             _check_product_statement_grounding(revision, draft, claims),
+            _check_personalization_is_cited(revision, draft, claims),
             _check_compliance_elements(revision, draft),
         )
         if failure is not None

@@ -77,6 +77,19 @@ class MessageRevision(Base, TimestampMixin):
             "(state IN ('SUPERSEDED', 'INVALIDATED')) = (retired_at IS NOT NULL)",
             name="retired_state_needs_a_timestamp",
         ),
+        # A refusal reason belongs only to a revision a reviewer refused, and refusing is the one
+        # thing that invalidates a revision on purpose (`T-208`). Without this a reason could be
+        # left behind on a revision that later moved, and the record would claim a decision
+        # nobody took.
+        CheckConstraint(
+            "refusal_reason IS NULL OR state = 'INVALIDATED'",
+            name="refusal_reason_needs_an_invalidated_revision",
+        ),
+        # Notes explain a reason; notes with no reason are an explanation of nothing.
+        CheckConstraint(
+            "refusal_notes IS NULL OR refusal_reason IS NOT NULL",
+            name="refusal_notes_need_a_reason",
+        ),
         Index("ix_message_revision_draft_id", "draft_id"),
         Index("ix_message_revision_state", "state"),
     )
@@ -111,6 +124,19 @@ class MessageRevision(Base, TimestampMixin):
     )
     #: Set when the revision leaves circulation, i.e. superseded or invalidated.
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    #: Why a reviewer refused these words (`T-208`; §10.6, §12.3 item 7). A `DecisionCategory`
+    #: value, stored as its string: the column is on the revision because the refusal is a fact
+    #: about *this* text, and a reviewer reading the row later should not have to reconstruct the
+    #: decision from the audit trail. Null on every revision nobody refused.
+    #:
+    #: Not a foreign key and not an enum column: §10.6's categories are shared with candidate
+    #: decisions, and a second enum type in the database for the same eleven strings would be two
+    #: things to keep in step. The API is what constrains which of them may land here.
+    refusal_reason: Mapped[str | None] = mapped_column(String(50))
+    #: The reviewer's own sentence, optional. A category records *that* the words were refused;
+    #: this is where they say what was wrong with them.
+    refusal_notes: Mapped[str | None] = mapped_column(Text)
 
     #: An `Actor` id, not a user (ADR-025). `T-136` closed without converting this one: a
     #: revision is authored by the model gateway as often as by a reviewer editing it.

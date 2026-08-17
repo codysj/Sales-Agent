@@ -20,7 +20,7 @@
 | Language | TypeScript 5.9, `strict` **plus** `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch` |
 | Lint | ESLint 10 flat config, `typescript-eslint` **type-aware** (`recommendedTypeChecked`), `eslint-plugin-react-hooks` |
 | Tests | Vitest |
-| Styling | None yet — deferred to the first screen that needs it (`T-062`) |
+| Styling | None yet — deferred to the first screen that needs it. **Superseded 2026-08-15 by [ADR-031](ADR-031-the-review-desk-has-a-visual-design.md)**, when that screen arrived |
 | Data fetching | None yet — `T-060b` generates a typed client; until then the app fetches nothing, enforced by a test |
 
 Scripts are `lint`, `typecheck`, `build`, `test`, and all four must pass.
@@ -123,8 +123,10 @@ accidentally depended on `window`.
 
 ## Revisit if
 
-- The dashboard needs a styling approach — that is a decision, not a default, and belongs in its
-  own ADR at `T-062`.
+- ~~The dashboard needs a styling approach — that is a decision, not a default, and belongs in its
+  own ADR at `T-062`.~~ **Answered 2026-08-15 by [ADR-031](ADR-031-the-review-desk-has-a-visual-design.md)**, and the way this line failed is worth keeping. The condition was right — *the first screen that needs it* — but it was addressed to **`T-062`**, which is server-side RBAC enforcement and closed on 2026-07-31 without touching styling, because styling was never in its scope. So the decision was deferred to a task that could not make it, and for two weeks afterwards later tasks scoped styling out citing a deferral whose destination was gone. A revisit condition is a condition somebody will notice coming true; naming a task instead makes it depend on that task being read. Written as a condition below.
+- A screen needs a treatment its semantic markup cannot express, which is when a `className` and
+  the tooling behind one earn their way in — ADR-031 styles element and attribute selectors only.
 - CI (`T-007`) finds the type-aware lint too slow to run on every push, in which case split it
   rather than weaken it.
 - A second frontend appears, at which point the package manager choice deserves re-examination

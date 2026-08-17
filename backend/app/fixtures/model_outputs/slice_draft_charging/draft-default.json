@@ -7,7 +7,9 @@
     "approved_claim_ids": [
       "SYNTHETIC-CLAIM-charging-readiness"
     ],
-    "evidence_ids": []
+    "evidence_ids": [
+      "SYNTHETIC-EVIDENCE-1"
+    ]
   },
   "input_tokens": 140,
   "output_tokens": 60

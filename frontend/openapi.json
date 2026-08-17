@@ -501,6 +501,23 @@
         "title": "CandidateRow",
         "type": "object"
       },
+      "Check": {
+        "description": "The \u00a78.3 step 10 checks, named so a failure says which one refused.",
+        "enum": [
+          "claim_citations",
+          "claim_currency",
+          "campaign_scope",
+          "product_readiness",
+          "evidence_citations",
+          "recipient_contactable",
+          "suppression",
+          "product_statement_grounding",
+          "compliance_elements",
+          "evidence_for_personalization"
+        ],
+        "title": "Check",
+        "type": "string"
+      },
       "ClaimRow": {
         "description": "One approved claim currently usable for this campaign (\u00a710.5).",
         "properties": {
@@ -1077,6 +1094,16 @@
         "title": "Liveness",
         "type": "object"
       },
+      "MessageRefusalReason": {
+        "description": "The \u00a710.6 categories that are judgements about the message rather than the candidate.\n\nValues match `DecisionCategory` exactly. A separate enum rather than a runtime filter over\nthat one, because it is the API's schema that has to refuse the other eight before a handler\nruns \u2014 the same reason `RejectRequest` takes a typed category instead of validating a string.",
+        "enum": [
+          "unsupported_claim",
+          "personalization_not_useful",
+          "tone_or_positioning_problem"
+        ],
+        "title": "MessageRefusalReason",
+        "type": "string"
+      },
       "MessageRevisionState": {
         "description": "\u00a78.2: draft -> validation_failed/review_pending -> approved/superseded/invalidated.",
         "enum": [
@@ -1260,6 +1287,79 @@
         ],
         "title": "ReadinessCategory",
         "type": "string"
+      },
+      "RefuseMessageRequest": {
+        "additionalProperties": false,
+        "description": "Why these words must not be sent (\u00a710.6, \u00a712.3 item 7).",
+        "properties": {
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/MessageRefusalReason"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RefuseMessageRequest",
+        "type": "object"
+      },
+      "RefuseMessageResponse": {
+        "description": "What the refusal recorded, and what it did not do.",
+        "properties": {
+          "message_revision_id": {
+            "format": "uuid",
+            "title": "Message Revision Id",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/MessageRefusalReason"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "revision_state": {
+            "title": "Revision State",
+            "type": "string"
+          },
+          "what_happens_next": {
+            "title": "What Happens Next",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_revision_id",
+          "revision_state",
+          "reason",
+          "what_happens_next",
+          "record_version"
+        ],
+        "title": "RefuseMessageResponse",
+        "type": "object"
       },
       "RejectRequest": {
         "additionalProperties": false,
@@ -1642,6 +1742,108 @@
         "title": "SourceType",
         "type": "string"
       },
+      "StrandedRevisionPage": {
+        "description": "Drafts nobody can approve, longest-waiting first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StrandedRevisionRow"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "StrandedRevisionPage",
+        "type": "object"
+      },
+      "StrandedRevisionRow": {
+        "description": "A candidate whose latest revision cannot be approved by anyone (\u00a77.5).",
+        "properties": {
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "campaign_name": {
+            "title": "Campaign Name",
+            "type": "string"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationFailureRow"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "record_version": {
+            "format": "date-time",
+            "title": "Record Version",
+            "type": "string"
+          },
+          "refusal_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal Notes"
+          },
+          "refusal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal Reason"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision_id",
+          "candidate_id",
+          "campaign_id",
+          "campaign_name",
+          "account_name",
+          "revision_number",
+          "subject",
+          "failures",
+          "refusal_reason",
+          "refusal_notes",
+          "record_version"
+        ],
+        "title": "StrandedRevisionRow",
+        "type": "object"
+      },
       "StubSignInRequest": {
         "additionalProperties": false,
         "description": "Who to sign in. There is no password field, and that is `\u00a712.2` rather than an omission.",
@@ -1716,6 +1918,32 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationFailureRow": {
+        "description": "One check that refuses a revision, and the identifiers that decided it (\u00a78.3 step 10).\n\n``inputs`` carries IDs and classifications only \u2014 never the subject, the body, or an address.\nThat is `ValidationFailure`'s own \u00a715.5 guarantee, kept by passing the dictionary through\nrather than by assembling a new one here.",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/Check"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "reason",
+          "inputs"
+        ],
+        "title": "ValidationFailureRow",
         "type": "object"
       },
       "VerificationState": {
@@ -2248,6 +2476,89 @@
           }
         },
         "summary": "Approvals that no longer authorize a send",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/attention/revisions": {
+      "get": {
+        "description": "\u00a77.5's invalidated drafts. A read, so `requires` rather than `requires_mutation`.",
+        "operationId": "list_stranded_revisions_api_review_attention_revisions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrandedRevisionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drafts nobody can approve, because a check refused them or a reviewer did",
         "tags": [
           "review"
         ]
@@ -3214,6 +3525,108 @@
           }
         },
         "summary": "Edit a draft, creating the next immutable revision",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/review/revisions/{revision_id}/refuse": {
+      "post": {
+        "description": "\u00a78.2's `review_pending -> invalidated`, with \u00a710.6's reason attached.\n\n`CORRECT_CANDIDATE` and not `APPROVE_MESSAGE`: this is a tier-3 correction \u2014 it stops an\nexternal effect rather than authorizing one, and a role trusted to tidy the queue is trusted\nto say \"not these words\". The inverse would be worse: a reviewer able to approve a message but\nnot to refuse it is the hole this task exists to close.",
+        "operationId": "refuse_message_endpoint_api_review_revisions__revision_id__refuse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mp_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mp Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefuseMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefuseMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refuse a revision's wording, with a reason and no replacement text",
         "tags": [
           "review"
         ]

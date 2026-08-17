@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ApiRefused, approveCandidate } from "../../lib/api";
 import type { ApproveResponse, CandidateDetail, ContactPointRow } from "../../lib/api";
 import { getSessionToken } from "../../lib/session";
+import { DECIDABLE_STATE, whyNotDecidable } from "./decidable";
 
 /**
  * Approving a candidate for an exact recipient (T-154b; §12.3 items 1 and 6, ADR-008).
@@ -24,6 +25,12 @@ import { getSessionToken } from "../../lib/session";
  * **G-07** governs live sending, and a reviewer pressing a button labelled "Approve" deserves to
  * know which of those they are causing.
  *
+ * **And it is the same noun the card's footer uses (`T-215`).** This paragraph said "queues a
+ * draft" while the footer said approving "creates no outbound message", one section below. Both
+ * were true. Read together they are a contradiction, because two nouns for what a reader takes to
+ * be one object leaves them guessing which is which — so the sentence now says what a draft is
+ * rather than trusting the word to carry it.
+ *
  * **The result names the address.** An approval confirmed as "done" is one nobody can check; an
  * approval confirmed as "approved for `someone@example.com`" is one a reviewer can catch
  * themselves having got wrong.
@@ -42,7 +49,13 @@ function describe(point: ContactPointRow): string {
   return `${point.value} (${point.type}, ${point.verification_state} — cannot be approved until it is verified)`;
 }
 
-export function ApproveForm({ candidate }: { candidate: CandidateDetail }) {
+export function ApproveForm({
+  candidate,
+  onChanged,
+}: {
+  candidate: CandidateDetail;
+  onChanged?: (() => void) | undefined;
+}) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "idle" });
 
@@ -57,8 +70,7 @@ export function ApproveForm({ candidate }: { candidate: CandidateDetail }) {
     if (token === null) {
       setOutcome({
         kind: "refused",
-        detail:
-          "You are not signed in, so nothing was approved. Sign in and try again (T-151).",
+        detail: "You are not signed in, so nothing was approved. Sign in and try again.",
       });
       return;
     }
@@ -67,10 +79,14 @@ export function ApproveForm({ candidate }: { candidate: CandidateDetail }) {
     try {
       const response = await approveCandidate(
         candidate.candidate_id,
-        { recipient_contact_point_id: chosen, record_version: candidate.record_version },
+        {
+          recipient_contact_point_id: chosen,
+          record_version: candidate.record_version,
+        },
         token,
       );
       setOutcome({ kind: "approved", response });
+      onChanged?.();
     } catch (error) {
       setOutcome({
         kind: "refused",
@@ -82,15 +98,34 @@ export function ApproveForm({ candidate }: { candidate: CandidateDetail }) {
     }
   }
 
+  // A candidate decision has already been taken, so the server would refuse this and the client
+  // can see that without asking (`T-211`, criterion 2). §8.2 offers the candidate lifecycle one
+  // edge out of `approved` — to `invalidated` — and none at all out of `rejected`; the backend's
+  // `DECIDABLE_STATE` says the same thing. Offering the form anyway is how `T-071c` watched a
+  // reader press a button and receive specification prose.
+  if (outcome.kind !== "approved" && candidate.state !== DECIDABLE_STATE) {
+    return (
+      <section aria-labelledby="approve">
+        <h2 id="approve">Approve for outreach</h2>
+        <p>{whyNotDecidable(candidate.state)}</p>
+      </section>
+    );
+  }
+
   return (
     <section aria-labelledby="approve">
       <h2 id="approve">Approve for outreach</h2>
       <p>
-        Approving queues a draft for the address you choose. Nothing is sent — live sending is
-        gated (G-07) and needs a separate, explicit authorization.
+        Approving queues a draft for the address you choose. Nothing is sent: a draft is written
+        here for you to read and approve, and is delivered to nobody. This build cannot send email
+        at all, and switching that on is a separate decision nobody has taken (gate G-07).
       </p>
 
-      {candidate.contact_points.length === 0 ? (
+      {/* Once it is approved the form is gone, not merely accompanied by a success message
+          (`T-210`). Leaving it on screen offers a second approval that the server would refuse,
+          and puts a live control next to the sentence saying the decision is already taken —
+          which is the same "the card does not reflect what just happened" this task is about. */}
+      {outcome.kind === "approved" ? null : candidate.contact_points.length === 0 ? (
         <p>
           No contact points are recorded for this contact, so there is no address to approve. This
           candidate needs a verified address before it can be approved.

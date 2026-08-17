@@ -1,0 +1,15 @@
+{
+  "document_id": "SYNTHETIC-DOC-juliett-infrastructure",
+  "account_domain": "juliett.example.com",
+  "source_type": "synthetic_fixture",
+  "source_quality": "medium",
+  "retention_class": "public_unrestricted",
+  "contains_personal_or_confidential_data": false,
+  "text": "SYNTHETIC EXAMPLE DOCUMENT. SYNTHETIC-Account-Juliett is described for development purposes only as operating placeholder infrastructure across two sites. Nothing in this document describes a real organization, a real project, or a real decision. Added by T-207 for the same reason as the Foxtrot note, and it is the account that belongs to both campaigns — so one stored fact has to serve two independent candidates without either borrowing the other's judgement.",
+  "facts": [
+    {
+      "excerpt": "SYNTHETIC: the account is described as operating infrastructure across two sites.",
+      "field_or_span": "summary"
+    }
+  ]
+}

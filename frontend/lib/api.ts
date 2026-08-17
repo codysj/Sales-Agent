@@ -463,6 +463,68 @@ export async function listStaleApprovals(
   return ((await response.json()) as AttentionPage).items;
 }
 
+export type RefuseMessageRequest =
+  paths["/api/review/revisions/{revision_id}/refuse"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RefuseMessageResponse =
+  paths["/api/review/revisions/{revision_id}/refuse"]["post"]["responses"][200]["content"]["application/json"];
+
+/**
+ * Record that these exact words must not be sent (`T-208`; §8.2's `review_pending -> invalidated`).
+ *
+ * The third thing a reviewer can do with a draft, beside approving it and editing it. It carries
+ * no subject and no body on purpose: a refusal that required replacement copy is the gap this
+ * closes, and three rehearsal readers hit it in a row.
+ */
+export async function refuseRevision(
+  revisionId: string,
+  request: RefuseMessageRequest,
+  token: string,
+  signal?: AbortSignal,
+): Promise<RefuseMessageResponse> {
+  const response = await fetch(`/api/review/revisions/${revisionId}/refuse`, {
+    method: "POST",
+    ...(signal ? { signal } : {}),
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw await refusal(response, `POST /api/review/revisions/${revisionId}/refuse`);
+  }
+  return (await response.json()) as RefuseMessageResponse;
+}
+
+/** §7.5's other half: drafts whose latest revision failed validation (`T-209`). */
+export type StrandedRevisionPage =
+  paths["/api/review/attention/revisions"]["get"]["responses"][200]["content"]["application/json"];
+
+export type StrandedRevisionRow = StrandedRevisionPage["items"][number];
+
+/**
+ * Every candidate whose latest draft cannot be approved by anyone, longest-waiting first.
+ *
+ * The same shape as `listStaleApprovals` and the same reason for having no campaign filter: the
+ * question a reviewer opens this page with is "what is stuck", not "what is stuck in one
+ * campaign".
+ */
+export async function listStrandedRevisions(
+  token: string,
+  signal?: AbortSignal,
+): Promise<StrandedRevisionRow[]> {
+  const response = await fetch("/api/review/attention/revisions", {
+    ...(signal ? { signal } : {}),
+    headers: { accept: "application/json", authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw await refusal(response, "GET /api/review/attention/revisions");
+  }
+  return ((await response.json()) as StrandedRevisionPage).items;
+}
+
 export type RevokeApprovalRequest =
   paths["/api/review/approvals/{approval_id}/revoke"]["post"]["requestBody"]["content"]["application/json"];
 

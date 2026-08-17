@@ -155,12 +155,22 @@ describe("signing in", () => {
     expect(screen.queryByLabelText("Password")).toBeNull();
   });
 
-  it("says the sign-in verifies nothing", () => {
+  it("says the sign-in checks nothing, without naming a task to say it", () => {
+    // §12.2. A reviewer typing their address into a box marked "sign in" should know that nothing
+    // here checked anything.
+    //
+    // **This test used to pin the defect (`T-216`).** It asserted the page contained the literal
+    // string "T-061b" — a backlog row the reader has no access to, on the first screen they ever
+    // see — so the identifier was not merely present, it was *required*, and removing it broke the
+    // suite. That is what pinning a phrase rather than a property buys: the wording it happened to
+    // have becomes the specification. A reader asked "What is T-061b?" out loud before anybody
+    // noticed. It now asserts what the page must convey and leaves the words free to improve.
     render(<SignInForm />);
 
     const text = screen.getByRole("form", { name: "Sign in" }).parentElement?.textContent ?? "";
-    expect(text).toContain("verifies nothing");
-    expect(text).toContain("T-061b");
+    expect(text).toMatch(/checks no password/);
+    expect(text).toMatch(/single sign-on is not wired up/);
+    expect(text).not.toMatch(/\bT-\d{3}[a-z]?\b/);
   });
 
   it("takes the review page from signed out to showing the candidate", async () => {
@@ -246,7 +256,10 @@ describe("signed out", () => {
     route({
       "GET /api/review/candidates": {
         status: 403,
-        body: { detail: "this action requires view_review_queue" },
+        body: {
+          detail:
+            "your account does not have access to this. Ask an administrator for the view_review_queue permission.",
+        },
       },
     });
     setSessionToken(TOKEN);

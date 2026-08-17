@@ -1,8 +1,13 @@
 """Message revision validation (T-055; §8.3 step 10, §10.5, §15.6, §15.7).
 
-Nine checks, each with a passing and a failing test, and then the three properties that make the
-set worth having: every failure is reported rather than the first, a revision with any failure
+Every check in `Check` gets a passing and a failing test, and then the three properties that make
+the set worth having: every failure is reported rather than the first, a revision with any failure
 never reaches a reviewer, and the whole thing is deterministic with no model in it.
+
+The count used to be written here — "nine checks" — and `T-207` made it ten without anybody
+noticing (`T-214`). `::test_every_check_in_the_enum_is_reachable` is what actually holds the set
+closed, so the enum is named instead of counted: a sentence that cannot go stale beats one that
+went stale the same week it was true.
 
 The interesting case is `claim_currency`. A claim that expires between drafting and review leaves
 the message *textually unchanged* — same wording, same hash, same everything — and must still
@@ -245,7 +250,7 @@ def world(db_session: Session) -> World:
 
 
 def test_a_well_formed_revision_passes_every_check(world: World) -> None:
-    """The positive case for all nine checks; each negative below breaks one thing."""
+    """The positive case for every check; each negative below breaks exactly one thing."""
     result = validate_revision(world.session, world.revision, at=NOW)
 
     assert result.is_valid
@@ -594,6 +599,80 @@ def test_a_failure_compares_by_value(world: World) -> None:
 
     assert left == right
     assert left != ValidationFailure(check=Check.CLAIM_CURRENCY, reason="r", inputs={"a": "b"})
+
+
+# --- T-207: a prospect statement must cite the fact it rests on ----------------------------------
+
+
+def test_a_personalized_message_citing_no_evidence_is_refused(world: World) -> None:
+    """The decision `T-207` records. `_check_evidence_citations` returns early on an empty list,
+    so until this check existed a draft could assert something about an account while citing
+    nothing at all — and both default fixtures did exactly that, one of them in front of a
+    rehearsal reader."""
+    revision = world.make_revision(evidence=[])
+
+    failures = [
+        failure.check for failure in validate_revision(world.session, revision, at=NOW).failures
+    ]
+
+    assert Check.EVIDENCE_FOR_PERSONALIZATION in failures
+
+
+def test_a_message_that_says_nothing_about_the_prospect_needs_no_evidence(world: World) -> None:
+    """The other side of the rule, and the reason it is about *personalization* rather than about
+    evidence: a message carrying only approved claims and boilerplate asserts nothing about this
+    prospect, so there is nothing for a stored fact to support."""
+    revision = world.make_revision(
+        evidence=[],
+        body=render_body(DraftPurpose.INITIAL_OUTREACH, personalization="", claims=[world.claim]),
+    )
+
+    failures = [
+        failure.check for failure in validate_revision(world.session, revision, at=NOW).failures
+    ]
+
+    assert Check.EVIDENCE_FOR_PERSONALIZATION not in failures
+
+
+def test_a_personalized_message_that_cites_evidence_passes(world: World) -> None:
+    """The control. Without it the two tests above would also pass on a check that refused
+    everything, or on one that never ran."""
+    failures = [
+        failure.check
+        for failure in validate_revision(world.session, world.revision, at=NOW).failures
+    ]
+
+    assert Check.EVIDENCE_FOR_PERSONALIZATION not in failures
+
+
+def test_the_refusal_carries_no_message_content(world: World) -> None:
+    """§15.5. A validator that quoted the sentence into `inputs` would put message text into the
+    audit trail and onto every page that renders a failure."""
+    revision = world.make_revision(evidence=[])
+
+    failure = next(
+        item
+        for item in validate_revision(world.session, revision, at=NOW).failures
+        if item.check is Check.EVIDENCE_FOR_PERSONALIZATION
+    )
+
+    for value in failure.inputs.values():
+        assert PERSONALIZATION not in value
+
+
+def test_a_free_form_body_is_left_to_the_grounding_check(world: World) -> None:
+    """A body that is not template-shaped — a reviewer's own rewrite — is refused by
+    `PRODUCT_STATEMENT_GROUNDING` already. Deciding which part of free prose is a prospect
+    statement would be a guess, and a second failure derived from a guess reads as two problems
+    when there is one."""
+    revision = world.make_revision(evidence=[], body="SYNTHETIC: a reviewer's own words entirely.")
+
+    failures = [
+        failure.check for failure in validate_revision(world.session, revision, at=NOW).failures
+    ]
+
+    assert Check.PRODUCT_STATEMENT_GROUNDING in failures
+    assert Check.EVIDENCE_FOR_PERSONALIZATION not in failures
 
 
 def test_every_check_in_the_enum_is_reachable() -> None:

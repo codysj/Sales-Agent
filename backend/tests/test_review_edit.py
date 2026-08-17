@@ -453,6 +453,73 @@ def test_a_superseded_revision_cannot_be_edited(db_session: Session, world: Worl
         )
 
 
+# --- editing is the way back from a refusal (T-211) ----------------------------------------------
+#
+# `T-208` let a reviewer refuse wording. `invalidated` was not editable, so that left the candidate
+# with no legal move anywhere: it is already `approved`, and §8.2 gives an approved candidate one
+# edge, to `invalidated`. Editing is the route back, and these two tests are the pair that makes it
+# safe — the state is permitted, and only for the draft's last revision.
+
+
+def test_a_refused_revision_can_be_edited_into_a_replacement(
+    db_session: Session, world: World
+) -> None:
+    revisions.transition(
+        db_session, world.revision, MessageRevisionState.REVIEW_PENDING, actor=OPERATOR
+    )
+    revisions.refuse(
+        db_session, world.revision, reason="tone_or_positioning_problem", actor=OPERATOR
+    )
+
+    result = edit_revision(
+        db_session,
+        world.revision,
+        subject="SYNTHETIC replacement subject",
+        body="SYNTHETIC replacement body.",
+        correction_reason="Tone or wording",
+        actor=OPERATOR,
+    )
+
+    assert result.revision.revision_number == 2
+    # The refusal is history and stays exactly as it was recorded: still invalidated, still
+    # carrying the reason. A replacement does not un-refuse what somebody refused.
+    db_session.refresh(world.revision)
+    assert world.revision.state is MessageRevisionState.INVALIDATED
+    assert world.revision.refusal_reason == "tone_or_positioning_problem"
+
+
+def test_a_refused_revision_that_is_no_longer_the_latest_cannot_be_edited(
+    db_session: Session, world: World
+) -> None:
+    """The control on the state above, and the reason the check is about the draft rather than the
+    revision: nothing supersedes an invalidated revision, so a draft can hold one *and* a later
+    live one. Editing the older would base new text on refused wording and retire the current."""
+    revisions.transition(
+        db_session, world.revision, MessageRevisionState.REVIEW_PENDING, actor=OPERATOR
+    )
+    revisions.refuse(
+        db_session, world.revision, reason="tone_or_positioning_problem", actor=OPERATOR
+    )
+    edit_revision(
+        db_session,
+        world.revision,
+        subject="SYNTHETIC replacement subject",
+        body="SYNTHETIC replacement body.",
+        correction_reason="Tone or wording",
+        actor=OPERATOR,
+    )
+
+    with pytest.raises(EditRefused, match="not the latest revision"):
+        edit_revision(
+            db_session,
+            world.revision,
+            subject="SYNTHETIC third subject",
+            body="SYNTHETIC third body.",
+            correction_reason="Tone or wording",
+            actor=OPERATOR,
+        )
+
+
 # --- the endpoint, and the first mutating route --------------------------------------------------
 
 

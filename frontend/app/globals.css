@@ -1,0 +1,394 @@
+/*
+ * The dashboard's visual design (T-217; ADR-031).
+ *
+ * **Element and attribute selectors only, and no `className` anywhere in the app.** Every page
+ * here is already written as semantic HTML — `section` with a labelled heading, `dl` for record
+ * fields, `blockquote` for an evidence excerpt, `pre` for the exact message, `role="alert"` for
+ * the two things a reviewer must not miss. Styling that markup directly means no component
+ * changes, and it means the style follows the meaning: a new `role="alert"` is styled as an
+ * alert the moment it is written, with nobody remembering to add a class.
+ *
+ * **Two registers, because the content has two.** The message and the evidence are prose a human
+ * wrote for another human, and they are set as correspondence — serif, at the largest size on the
+ * page, at a measure you can actually read. Everything else is *record*: labels, states,
+ * identifiers, timestamps. Record is set small and quiet, in the interface face, with identifiers
+ * in mono. The inversion is deliberate: on this screen the message outranks the chrome, because
+ * reading the exact words is the job.
+ *
+ * **The palette is spent on one signal.** One accent, and it means *do not*: suppression, and a
+ * revision that cannot be approved. It never carries the signal alone — an alert has a solid bar,
+ * a wash, and a heavier weight, so it survives a monochrome screen and a colour-blind reader
+ * (`T-217` criterion 3).
+ *
+ * **What this must never imply.** The card shows the message beside the evidence and claims it
+ * cites. The system checks that a citation *resolves*; it has never checked that a sentence
+ * *follows* from it — entailment is §19.3 and `T-082`, and it is not built. So nothing here draws
+ * a line, a link, or a tick between one sentence and one source. Adjacency says "this message
+ * cites these", which is true. A connector would say "this sentence is supported by that", which
+ * the system does not know.
+ */
+
+:root {
+  /* The desk, and the sheet on it. */
+  --desk: #2b3038;
+  --sheet: #ffffff;
+
+  --ink: #14171b;
+  --quiet: #5c646e;
+  --rule: #dce0e5;
+
+  /* The one accent: "must not". Suppression, and a revision that cannot be approved. */
+  --stop: #8c1d18;
+  --stop-wash: #fbeeec;
+
+  /* Something happened and it was fine. Quiet on purpose — it is not the signal. */
+  --noted-wash: #f2f5f8;
+
+  --face-interface: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --face-correspondence: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype",
+    Palatino, Georgia, serif;
+  --face-record: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, "SF Mono", monospace;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--desk);
+  color: var(--ink);
+  font-family: var(--face-interface);
+  font-size: 1rem;
+  line-height: 1.55;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The sheet. Every page is a `main`, so every route gets it — nothing falls back to the desk. */
+main {
+  display: block;
+  max-width: 78rem;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(1.25rem, 4vw, 3rem) clamp(1rem, 4vw, 3.5rem) 6rem;
+  background: var(--sheet);
+}
+
+/* Headings. Small and quiet, because the message they sit above is the loud thing. */
+h1 {
+  margin: 0 0 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+h2 {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--quiet);
+}
+
+h3 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+p {
+  margin: 0 0 0.75rem;
+  max-width: 68ch;
+}
+
+/* Section separation — §12.3's seven parts of the card, told apart at a glance. */
+section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+}
+
+main > section:first-of-type,
+article > section:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Record fields: the label small and quiet, the value in the reading face. */
+dl {
+  margin: 0 0 0.5rem;
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) minmax(0, 1fr);
+  gap: 0.35rem 1.5rem;
+  align-items: baseline;
+}
+
+dt {
+  font-family: var(--face-record);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  color: var(--quiet);
+}
+
+dd {
+  margin: 0;
+}
+
+@media (max-width: 40rem) {
+  dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 0;
+  }
+
+  dd {
+    margin: 0 0 0.75rem;
+  }
+}
+
+code,
+time {
+  font-family: var(--face-record);
+  font-size: 0.875em;
+}
+
+ul,
+ol {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+li {
+  margin-bottom: 0.5rem;
+}
+
+/* The entry page's sections list, and the two queues: rows, not bullets. */
+nav ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+nav li,
+ul[aria-label] > li {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+ul[aria-label] {
+  list-style: none;
+  padding-left: 0;
+}
+
+a {
+  color: var(--ink);
+  text-decoration-color: var(--quiet);
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  text-decoration-color: var(--ink);
+}
+
+/* Correspondence. The exact message a person will send, set as what it is. */
+pre {
+  margin: 0 0 1rem;
+  padding: 1.5rem 1.75rem;
+  max-width: 64ch;
+  border: 1px solid var(--rule);
+  background: var(--sheet);
+  font-family: var(--face-correspondence);
+  font-size: 1.125rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+blockquote {
+  margin: 0 0 0.5rem;
+  padding-left: 1rem;
+  max-width: 62ch;
+  border-left: 2px solid var(--rule);
+  font-family: var(--face-correspondence);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+/* The one signal. Colour is never carrying it alone: the bar, the wash, and the weight all say
+   the same thing, so it reads on a monochrome screen too. */
+[role="alert"] {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  max-width: 68ch;
+  border-left: 5px solid var(--stop);
+  background: var(--stop-wash);
+  color: var(--stop);
+  font-weight: 600;
+}
+
+[role="status"] {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  max-width: 68ch;
+  border-left: 5px solid var(--quiet);
+  background: var(--noted-wash);
+}
+
+[role="status"] > p:last-child,
+[role="alert"] > p:last-child {
+  margin-bottom: 0;
+}
+
+/* A nested alert inside an outcome panel keeps the accent but not a second box. */
+[role="status"] [role="alert"] {
+  background: transparent;
+  padding-left: 0.75rem;
+}
+
+[aria-busy="true"] {
+  color: var(--quiet);
+  font-style: italic;
+}
+
+/* Forms. Each action is its own labelled block, so five consequential controls read as five
+   decisions rather than a row of buttons. */
+form {
+  margin: 0.5rem 0 0;
+  max-width: 48rem;
+}
+
+form > label {
+  display: block;
+  margin: 1rem 0 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+form > input,
+form > select,
+form > textarea {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #98a1ab;
+  border-radius: 3px;
+  background: var(--sheet);
+  color: var(--ink);
+}
+
+/* Editing the letter happens in the letter's face — the reviewer sees what they are changing. */
+#edit-subject,
+#edit-body {
+  font-family: var(--face-correspondence);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+fieldset {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+
+legend {
+  padding: 0 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--quiet);
+}
+
+/* Radio rows: the control and its label on one line. */
+fieldset div {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+}
+
+button {
+  margin-top: 1rem;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--sheet);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: #000000;
+}
+
+button:disabled {
+  border-color: var(--quiet);
+  background: var(--quiet);
+  cursor: not-allowed;
+}
+
+/* Ink rather than a fifth colour, offset so it clears a dark button. */
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The citation pairing: the message beside the evidence and claims it cites. Adjacency only —
+   see the header. DOM order is unchanged, so reading and tab order are unchanged too. */
+@media (min-width: 68rem) {
+  article[aria-label="Candidate review card"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    column-gap: 3rem;
+  }
+
+  article[aria-label="Candidate review card"] > * {
+    grid-column: 1 / -1;
+  }
+
+  article > section[aria-labelledby="who"] {
+    grid-row: 1;
+  }
+
+  article > section[aria-labelledby="warnings"] {
+    grid-row: 2;
+  }
+
+  article > section[aria-labelledby="evidence"] {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  article > section[aria-labelledby="product"] {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  article > section[aria-labelledby="message"] {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

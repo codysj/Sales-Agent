@@ -29,12 +29,21 @@ import { ReviewCard } from "../ReviewCard";
  * **A `403` is not a `401`.** Signing in again cannot fix a missing role, and offering the form
  * would send a reviewer round a loop that can never succeed — so a refusal that is not `401` is
  * shown as what it is, with the backend's own sentence.
+ *
+ * **It refetches after every action that changes something** (`T-210`). It did not, and `T-071d`
+ * watched what that costs: two runs of three saw the card claim a draft had been queued while the
+ * section below it said none existed, and one saw revision 1 still displayed after saving
+ * revision 2. Both are the same bug — the page fetched once and every later truth arrived
+ * somewhere the card could not see. A counter in the dependency list rather than a cache library:
+ * there is one query on this page, and the reviewer's own action is the only thing that
+ * invalidates it.
  */
 export default function ReviewPage({ params }: { params: Promise<{ candidateId: string }> }) {
   const { candidateId } = use(params);
   const token = useSessionToken();
   const [candidate, setCandidate] = useState<CandidateDetail | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     if (token === null) {
@@ -66,7 +75,7 @@ export default function ReviewPage({ params }: { params: Promise<{ candidateId: 
     return () => {
       controller.abort();
     };
-  }, [candidateId, token]);
+  }, [candidateId, token, reloads]);
 
   if (token === null) {
     return (
@@ -93,7 +102,12 @@ export default function ReviewPage({ params }: { params: Promise<{ candidateId: 
 
   return (
     <main>
-      <ReviewCard candidate={candidate} />
+      <ReviewCard
+        candidate={candidate}
+        onChanged={() => {
+          setReloads((count) => count + 1);
+        }}
+      />
     </main>
   );
 }

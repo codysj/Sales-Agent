@@ -15,6 +15,14 @@ import { setSessionToken } from "../lib/session";
  * The form says so, because a reviewer typing their address into a box marked "sign in" should
  * know that nothing here checked anything.
  *
+ * **It says it in their vocabulary, not this file's (`T-216`).** The paragraph ended "(T-061b)"
+ * — a row in a backlog the reader has no access to, on the first screen they ever see, reading
+ * as a fault code on a page whose job is to let somebody in. A rehearsal reader asked *"What is
+ * T-061b?"* in the same breath as *"it says 'this verifies nothing' — is it safe to sign in?"*.
+ * The identifier is gone and the honest part is stated as what it does rather than what it
+ * lacks: checking no password and no directory is a fact a reader can act on, where "verifies
+ * nothing" sounds like a warning about them.
+ *
  * **A refusal is shown as the backend's own sentence.** "The development sign-in stub is refused
  * in production" and "no user with email …" are different problems with different fixes, and a
  * generic "sign-in failed" leaves a reviewer with nothing to do next. The 503 in particular is
@@ -56,9 +64,9 @@ export function SignInForm({ onSignedIn }: { onSignedIn?: (token: string) => voi
     <section aria-labelledby="sign-in">
       <h2 id="sign-in">Sign in</h2>
       <p>
-        Local development sign-in. This verifies nothing — it issues a session for an existing
-        user and the backend refuses it outside a local environment. Managed single sign-on is not
-        wired up yet (T-061b).
+        This is the local development sign-in. It checks no password and no directory — it issues
+        a session for a user the backend already knows, and it refuses to run anywhere but a local
+        environment. Managed single sign-on is not wired up yet.
       </p>
 
       <form

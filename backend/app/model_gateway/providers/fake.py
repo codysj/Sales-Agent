@@ -151,6 +151,82 @@ class ModelOutputFixture(BaseModel):
         raise MalformedFixture(f"fixture {self.fixture_id} declares neither output nor a mode")
 
 
+# --- citing evidence from a file written in advance (T-207) --------------------------------------
+#
+# `T-207` made an uncited prospect statement fail validation, which left this adapter unable to
+# produce a valid personalized draft at all: evidence is keyed by a **runtime UUID**, so no fixture
+# written in advance can name one. A fixture that cannot cite is a fixture that can only produce
+# drafts a reviewer must refuse.
+#
+# Resolved here and never in `drafting.py`. `resolve_citations` must keep raising on a citation it
+# was not given — that is what catches a real model inventing an id — so teaching it a
+# development-only spelling would put a hole in the check that matters most. Substituting before
+# the output leaves the adapter means the draft path only ever sees an ordinary UUID that came out
+# of this candidate's own inputs.
+#
+# In the adapter rather than in `app/fixtures/model_routing.py`, where it was written first: two
+# routers wrap this class — that one and the test double in `tests/test_pipeline_jobs.py` — and a
+# substitution living in one of them is a substitution the other silently lacks. That is not
+# hypothetical either; it is how this moved.
+#
+# **Fewer snapshots than the sentinel asks for is not an error.** The sentinel resolves to nothing,
+# the draft personalizes with no citation, and `T-207`'s check refuses it — the honest outcome for
+# a candidate nobody found evidence for, and one a reviewer sees on `/attention` rather than
+# approves. Raising here would dead-letter the job instead, and a dead job is the failure nobody
+# reads.
+
+#: `SYNTHETIC-EVIDENCE-1` is the first evidence line in the prompt, `-2` the second, and so on.
+#: One-based because it is read by people writing fixtures, not by an index.
+SENTINEL_PREFIX: Final = "SYNTHETIC-EVIDENCE-"
+EVIDENCE_SENTINEL: Final = re.compile(rf"^{SENTINEL_PREFIX}(\d+)$")
+
+#: Every evidence line a drafting prompt carries is `"<uuid>: <excerpt>"` (`as_prompt_inputs`).
+#: Matched on the shape of a UUID at the start of a line, so a change to the prompt's wording
+#: around it cannot silently break the resolution.
+_PROMPT_EVIDENCE_ID: Final = re.compile(
+    r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):", re.MULTILINE
+)
+
+
+def evidence_ids_in(prompt: str) -> list[str]:
+    """The evidence snapshot ids this prompt was given, in the order it lists them."""
+    return _PROMPT_EVIDENCE_ID.findall(prompt)
+
+
+def resolve_evidence_sentinels(output: str, prompt: str) -> str:
+    """Replace `SYNTHETIC-EVIDENCE-N` in fixture output with the prompt's own snapshot ids.
+
+    Returns the output unchanged when it carries no sentinel — every qualification fixture, and
+    every draft fixture that cites nothing.
+    """
+    if SENTINEL_PREFIX not in output:
+        return output
+
+    available = evidence_ids_in(prompt)
+    try:
+        parsed = json.loads(output)
+    except json.JSONDecodeError:
+        # A failure-mode fixture returns prose on purpose. Nothing to substitute into.
+        return output
+    if not isinstance(parsed, dict) or "evidence_ids" not in parsed:
+        return output
+
+    resolved: list[str] = []
+    for value in parsed["evidence_ids"]:
+        match = EVIDENCE_SENTINEL.match(str(value))
+        if match is None:
+            resolved.append(str(value))
+            continue
+        index = int(match.group(1)) - 1
+        if 0 <= index < len(available):
+            resolved.append(available[index])
+        # else: dropped. See the note above.
+    parsed["evidence_ids"] = resolved
+    # Sorted for the same reason `rendered_output` sorts: the bytes must not depend on dictionary
+    # ordering, which is where cross-process determinism would quietly break.
+    return json.dumps(parsed, sort_keys=True)
+
+
 #: The instruction the echo mode looks for. Matching a fixed marker rather than trying to detect
 #: "an instruction" keeps the fake deterministic and honest about what it is doing (§15.4).
 INJECTION_MARKER: Final = "ignore previous instructions"
@@ -260,7 +336,7 @@ class FakeModelAdapter:
                 f"as provider_error (T-050)"
             )
 
-        output = fixture.rendered_output(prompt)
+        output = resolve_evidence_sentinels(fixture.rendered_output(prompt), prompt)
         return ProviderResponse(
             output_text=output,
             input_tokens=fixture.input_tokens,
