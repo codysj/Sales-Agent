@@ -21,9 +21,13 @@ Both are transcribed into [stage2-exit-evidence.md](stage2-exit-evidence.md) §5
 labelled subsections.
 
 > [!IMPORTANT]
-> **Neither rehearsal can run until `T-195` is fixed.** The dashboard's API calls are cross-origin
-> and the browser blocks them, so a reviewer — human or agent — cannot get past sign-in. Confirm
-> the review queue actually renders rows in a browser before scheduling anybody.
+> **Confirm the review queue actually renders rows in a browser before scheduling anybody.** This
+> block used to say neither rehearsal could run at all: the dashboard's API calls were
+> cross-origin, the browser blocked them, and a reviewer — human or agent — could not get past
+> sign-in. `T-195` fixed that on 2026-08-11 and rehearsals have run since, but the warning stayed
+> here telling an operator not to schedule anybody. An instruction that has outlived its reason is
+> worse than no instruction, because somebody acts on it. The check it asked for is worth keeping
+> on its own merits, so that is what remains.
 
 ---
 
